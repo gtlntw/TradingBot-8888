@@ -412,12 +412,12 @@ class SentimentFeatures(FeatureCalculator, LoggerMixin):
         df['fear_greed_index'] = (rsi_norm * 0.4 + vol_norm * 0.3 + volume_norm * 0.3)
         df['fear_greed_index'] = df['fear_greed_index'].fillna(50)  # Neutral default
 
-        # Add categories
+        # Add numeric sentiment categories (0-4)
         df['market_sentiment'] = pd.cut(
             df['fear_greed_index'],
             bins=[0, 25, 45, 55, 75, 100],
-            labels=['extreme_fear', 'fear', 'neutral', 'greed', 'extreme_greed']
-        )
+            labels=[0, 1, 2, 3, 4]
+        ).astype(float)
 
         return df
 
@@ -452,9 +452,9 @@ class FeatureEngineer(LoggerMixin):
         """
         self.config = config or {}
         self.feature_calculators = {
-            'technical': TechnicalIndicators(config.get('technical', {})),
+            'technical': TechnicalIndicators(self.config.get('technical', {})),
             'market': MarketFeatures(),
-            'sentiment': SentimentFeatures(config.get('sentiment', {})),
+            'sentiment': SentimentFeatures(self.config.get('sentiment', {})),
         }
 
     @timing

@@ -3,8 +3,6 @@
 # Data Configuration
 data:
   sources:
-    - binance
-    - coingecko
     - yfinance
   symbols:
     - BTC-USD
@@ -66,6 +64,14 @@ models:
       units: 50
       dropout: 0.2
       epochs: 100
+      batch_size: 32
+    transformer:
+      num_heads: 8
+      ff_dim: 32
+      num_transformer_blocks: 2
+      mlp_units: [128]
+      dropout: 0.1
+      epochs: 50
       batch_size: 32
 
 # Training Configuration

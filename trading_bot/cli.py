@@ -161,8 +161,8 @@ def preprocess(ctx, input, output, clean, features):
             click.echo("No CSV files found in input path")
             return
 
-        preprocessor = DataPreprocessor()
-        feature_engineer = FeatureEngineer() if features else None
+        preprocessor = DataPreprocessor(settings._config_data)
+        feature_engineer = FeatureEngineer(settings._config_data) if features else None
 
         for file_path in files:
             click.echo(f"Processing {file_path.name}...")

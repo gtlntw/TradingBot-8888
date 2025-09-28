@@ -22,8 +22,8 @@ import lightgbm as lgb
 
 # TensorFlow/Keras for neural networks
 import tensorflow as tf
-from tensorflow.keras.models import Sequential
-from tensorflow.keras.layers import LSTM, Dense, Dropout, BatchNormalization
+from tensorflow.keras.models import Sequential, Model
+from tensorflow.keras.layers import LSTM, Dense, Dropout, BatchNormalization, Input, MultiHeadAttention, LayerNormalization, GlobalAveragePooling1D
 from tensorflow.keras.callbacks import EarlyStopping, ReduceLROnPlateau
 from tensorflow.keras.optimizers import Adam
 
@@ -317,6 +317,12 @@ class LSTMModel(BaseModel):
         self.logger.info(f"Training LSTM {self.model_type} model with {X.shape[0]} samples")
         start_time = datetime.now()
 
+        # Reshape 2D input to 3D for LSTM (samples, timesteps=1, features)
+        if len(X.shape) == 2:
+            X = X.reshape(X.shape[0], 1, X.shape[1])
+            if X_val is not None:
+                X_val = X_val.reshape(X_val.shape[0], 1, X_val.shape[1])
+
         # Build model architecture
         self.model = Sequential([
             LSTM(self.params['units'], return_sequences=True, input_shape=(X.shape[1], X.shape[2])),
@@ -373,6 +379,10 @@ class LSTMModel(BaseModel):
         if not self.is_fitted:
             raise ValueError("Model must be fitted before making predictions")
 
+        # Reshape 2D input to 3D for LSTM (samples, timesteps=1, features)
+        if len(X.shape) == 2:
+            X = X.reshape(X.shape[0], 1, X.shape[1])
+
         predictions = self.model.predict(X, verbose=0)
 
         if self.model_type == 'regression':
@@ -385,10 +395,10 @@ class LSTMModel(BaseModel):
         filepath = Path(filepath)
         filepath.parent.mkdir(parents=True, exist_ok=True)
 
-        # Save Keras model
-        model_path = filepath.with_suffix('.h5')
+        # Save Keras model in new format with custom objects
+        model_path = filepath.with_suffix('.keras')
         if self.model:
-            self.model.save(model_path)
+            self.model.save(model_path, save_format='keras')
 
         # Save metadata
         metadata = {
@@ -418,7 +428,201 @@ class LSTMModel(BaseModel):
         if instance.is_fitted and 'model_path' in metadata:
             model_path = Path(metadata['model_path'])
             if model_path.exists():
+                try:
+                    instance.model = tf.keras.models.load_model(model_path)
+                except Exception as e:
+                    # Try loading with custom objects if needed
+                    custom_objects = {'mse': 'mse', 'mae': 'mae'}
+                    instance.model = tf.keras.models.load_model(model_path, custom_objects=custom_objects)
+
+        return instance
+
+
+class TransformerModel(BaseModel):
+    """Transformer model implementation for time series prediction."""
+
+    def __init__(self, model_type: str = 'regression', params: Optional[Dict] = None):
+        """Initialize Transformer model."""
+        default_params = {
+            'num_heads': 8,
+            'ff_dim': 32,
+            'num_transformer_blocks': 2,
+            'mlp_units': [128],
+            'dropout': 0.1,
+            'mlp_dropout': 0.1,
+            'epochs': 100,
+            'batch_size': 32,
+            'learning_rate': 0.001,
+            'patience': 10
+        }
+
+        if params:
+            default_params.update(params)
+
+        super().__init__(model_type, default_params)
+
+    def _transformer_encoder(self, inputs, head_size, num_heads, ff_dim, dropout=0):
+        """Create a transformer encoder block."""
+        # Attention and Normalization
+        x = MultiHeadAttention(
+            key_dim=head_size, num_heads=num_heads, dropout=dropout
+        )(inputs, inputs)
+        x = Dropout(dropout)(x)
+        x = LayerNormalization(epsilon=1e-6)(x + inputs)
+
+        # Feed Forward Network
+        ffn = tf.keras.Sequential([
+            Dense(ff_dim, activation="relu"),
+            Dropout(dropout),
+            Dense(inputs.shape[-1]),
+        ])
+        ffn_output = ffn(x)
+        ffn_output = Dropout(dropout)(ffn_output)
+        return LayerNormalization(epsilon=1e-6)(x + ffn_output)
+
+    def fit(self, X: np.ndarray, y: np.ndarray,
+           X_val: Optional[np.ndarray] = None, y_val: Optional[np.ndarray] = None,
+           feature_names: Optional[List[str]] = None) -> 'TransformerModel':
+        """Fit Transformer model."""
+        self.feature_names = feature_names
+
+        self.logger.info(f"Training Transformer {self.model_type} model with {X.shape[0]} samples")
+        start_time = datetime.now()
+
+        # Reshape 2D input to 3D for Transformer (samples, timesteps=1, features)
+        if len(X.shape) == 2:
+            X = X.reshape(X.shape[0], 1, X.shape[1])
+            if X_val is not None:
+                X_val = X_val.reshape(X_val.shape[0], 1, X_val.shape[1])
+
+        # Build model architecture
+        inputs = Input(shape=(X.shape[1], X.shape[2]))
+        x = inputs
+
+        # Add transformer blocks
+        head_size = X.shape[2] // self.params['num_heads']
+        for _ in range(self.params['num_transformer_blocks']):
+            x = self._transformer_encoder(
+                x, head_size, self.params['num_heads'],
+                self.params['ff_dim'], self.params['dropout']
+            )
+
+        # Global pooling and final layers
+        x = GlobalAveragePooling1D(data_format="channels_first")(x)
+
+        # Add MLP layers
+        for dim in self.params['mlp_units']:
+            x = Dense(dim, activation="relu")(x)
+            x = Dropout(self.params['mlp_dropout'])(x)
+
+        # Output layer
+        outputs = Dense(
+            1 if self.model_type == 'regression' else 2,
+            activation='linear' if self.model_type == 'regression' else 'softmax'
+        )(x)
+
+        self.model = Model(inputs, outputs)
+
+        # Compile model
+        optimizer = Adam(learning_rate=self.params['learning_rate'])
+        loss = 'mse' if self.model_type == 'regression' else 'sparse_categorical_crossentropy'
+        metrics = ['mae'] if self.model_type == 'regression' else ['accuracy']
+        self.model.compile(optimizer=optimizer, loss=loss, metrics=metrics)
+
+        # Prepare callbacks
+        callbacks = [
+            EarlyStopping(patience=self.params['patience'], restore_best_weights=True),
+            ReduceLROnPlateau(patience=self.params['patience']//2, factor=0.5)
+        ]
+
+        # Prepare validation data
+        validation_data = None
+        if X_val is not None and y_val is not None:
+            validation_data = (X_val, y_val)
+
+        # Train model
+        history = self.model.fit(
+            X, y,
+            epochs=self.params['epochs'],
+            batch_size=self.params['batch_size'],
+            validation_data=validation_data,
+            callbacks=callbacks,
+            verbose=0
+        )
+
+        self.is_fitted = True
+
+        training_time = (datetime.now() - start_time).total_seconds()
+        self.training_history['training_time'] = training_time
+        self.training_history['n_samples'] = X.shape[0]
+        self.training_history['n_features'] = X.shape[2]
+        self.training_history['keras_history'] = history.history
+
+        self.logger.info(f"Transformer training completed in {training_time:.2f}s")
+        return self
+
+    def predict(self, X: np.ndarray) -> np.ndarray:
+        """Make predictions with Transformer."""
+        if not self.is_fitted:
+            raise ValueError("Model must be fitted before making predictions")
+
+        # Reshape 2D input to 3D for Transformer (samples, timesteps=1, features)
+        if len(X.shape) == 2:
+            X = X.reshape(X.shape[0], 1, X.shape[1])
+
+        predictions = self.model.predict(X, verbose=0)
+
+        if self.model_type == 'regression':
+            return predictions.flatten()
+        else:
+            return np.argmax(predictions, axis=1)
+
+    def save(self, filepath: Union[str, Path]) -> None:
+        """Save Transformer model to file."""
+        filepath = Path(filepath)
+        filepath.parent.mkdir(parents=True, exist_ok=True)
+
+        # Save Keras model in new format
+        model_path = filepath.with_suffix('.keras')
+        if self.model:
+            self.model.save(model_path, save_format='keras')
+
+        # Save metadata
+        metadata = {
+            'model_type': self.model_type,
+            'params': self.params,
+            'is_fitted': self.is_fitted,
+            'feature_names': self.feature_names,
+            'training_history': self.training_history,
+            'model_path': str(model_path)
+        }
+
+        save_object(metadata, filepath)
+        self.logger.info(f"Model saved to {filepath}")
+
+    @classmethod
+    def load(cls, filepath: Union[str, Path]) -> 'TransformerModel':
+        """Load Transformer model from file."""
+        filepath = Path(filepath)
+
+        # Load metadata
+        metadata = load_object(filepath)
+
+        # Create instance
+        instance = cls(metadata['model_type'], metadata.get('params', {}))
+        instance.is_fitted = metadata['is_fitted']
+        instance.feature_names = metadata['feature_names']
+        instance.training_history = metadata.get('training_history', {})
+
+        # Load Keras model if it exists
+        model_path = Path(metadata['model_path'])
+        if model_path.exists():
+            try:
                 instance.model = tf.keras.models.load_model(model_path)
+            except Exception as e:
+                # Try loading with custom objects if needed
+                custom_objects = {'mse': 'mse', 'mae': 'mae'}
+                instance.model = tf.keras.models.load_model(model_path, custom_objects=custom_objects)
 
         return instance
 
@@ -439,7 +643,8 @@ class ModelTrainer(LoggerMixin):
             'random_forest': RandomForestModel,
             'xgboost': XGBoostModel,
             'lightgbm': LightGBMModel,
-            'lstm': LSTMModel
+            'lstm': LSTMModel,
+            'transformer': TransformerModel
         }
 
     @timing
