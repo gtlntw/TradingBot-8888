@@ -1,0 +1,49 @@
+version: '3.8'
+
+services:
+  trading-bot:
+    build: .
+    container_name: bitcoin-trading-bot
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+      - ./configs:/app/configs
+    environment:
+      - PYTHONPATH=/app
+      - DATABASE_URL=sqlite:///data/trading_bot.db
+    depends_on:
+      - redis
+    networks:
+      - trading-network
+
+  redis:
+    image: redis:7-alpine
+    container_name: trading-bot-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - trading-network
+
+  jupyter:
+    build: .
+    container_name: trading-bot-jupyter
+    command: jupyter lab --ip=0.0.0.0 --port=8888 --no-browser --allow-root
+    ports:
+      - "8888:8888"
+    volumes:
+      - ./notebooks:/app/notebooks
+      - ./data:/app/data
+      - ./trading_bot:/app/trading_bot
+    environment:
+      - PYTHONPATH=/app
+    networks:
+      - trading-network
+
+volumes:
+  redis_data:
+
+networks:
+  trading-network:
+    driver: bridge

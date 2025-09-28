@@ -1,0 +1,131 @@
+# Default configuration for Bitcoin Trading Bot
+
+# Data Configuration
+data:
+  sources:
+    - binance
+    - coingecko
+    - yfinance
+  symbols:
+    - BTC-USD
+    - BTC-USDT
+  intervals:
+    - 1h
+    - 4h
+    - 1d
+  lookback_days: 365
+  update_frequency: 3600  # seconds
+
+# Feature Engineering
+features:
+  technical_indicators:
+    - sma
+    - ema
+    - rsi
+    - macd
+    - bollinger_bands
+    - stochastic
+    - atr
+    - adx
+  market_features:
+    - volume
+    - volatility
+    - price_change
+    - returns
+  sentiment_features:
+    - fear_greed_index
+    - social_sentiment
+  timeframes:
+    - 5
+    - 10
+    - 20
+    - 50
+    - 100
+
+# Model Configuration
+models:
+  algorithms:
+    - random_forest
+    - xgboost
+    - lightgbm
+    - lstm
+    - transformer
+  ensemble:
+    method: voting  # voting, stacking, blending
+    weights: auto
+  hyperparameters:
+    random_forest:
+      n_estimators: 100
+      max_depth: 10
+      min_samples_split: 5
+    xgboost:
+      n_estimators: 100
+      max_depth: 6
+      learning_rate: 0.1
+    lstm:
+      units: 50
+      dropout: 0.2
+      epochs: 100
+      batch_size: 32
+
+# Training Configuration
+training:
+  validation:
+    method: time_series_split
+    n_splits: 5
+    test_size: 0.2
+  cross_validation:
+    enabled: true
+    cv_folds: 5
+  feature_selection:
+    enabled: true
+    method: importance
+    threshold: 0.01
+
+# Trading Configuration
+trading:
+  strategy:
+    signal_threshold: 0.6
+    position_sizing: fixed  # fixed, kelly, risk_parity
+    max_positions: 1
+    stop_loss: 0.05
+    take_profit: 0.10
+  risk_management:
+    max_drawdown: 0.20
+    var_limit: 0.05
+    position_limit: 0.30
+  execution:
+    slippage: 0.001
+    commission: 0.001
+
+# Evaluation Configuration
+evaluation:
+  metrics:
+    - accuracy
+    - precision
+    - recall
+    - f1_score
+    - sharpe_ratio
+    - max_drawdown
+    - total_return
+    - win_rate
+  baselines:
+    - buy_and_hold
+    - moving_average
+    - random
+  reporting:
+    generate_plots: true
+    save_predictions: true
+    detailed_analysis: true
+
+# Logging Configuration
+logging:
+  level: INFO
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  handlers:
+    - console
+    - file
+  file_config:
+    filename: logs/trading_bot.log
+    max_bytes: 10485760  # 10MB
+    backup_count: 5
