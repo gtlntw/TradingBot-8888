@@ -356,14 +356,22 @@ class ReportGenerator(LoggerMixin):
         benchmark_data: Optional[pd.Series],
         plots_dir: Path
     ) -> Dict[str, str]:
-        """Generate all visualization plots."""
+        """Generate consolidated HTML report with all visualizations."""
         plot_files = {}
 
         equity_curve = backtest_results.get('equity_curve', pd.Series([]))
         returns = backtest_results.get('returns', pd.Series([]))
         trades = backtest_results.get('trades', pd.DataFrame())
+        metrics = backtest_results.get('metrics', {})
 
         try:
+            # Generate consolidated HTML report
+            consolidated_file = plots_dir.parent / f"{backtest_results.get('strategy_name', 'strategy')}_consolidated_report.html"
+            plot_files['consolidated_report'] = self._generate_consolidated_html_report(
+                backtest_results, benchmark_data, consolidated_file
+            )
+
+            # Still generate individual plots for backward compatibility (optional)
             # 1. Equity curve
             if not equity_curve.empty:
                 plot_files['equity_curve'] = self._plot_equity_curve(
@@ -644,6 +652,180 @@ class ReportGenerator(LoggerMixin):
         )
 
         fig.write_html(filepath)
+        return str(filepath)
+
+    def _generate_consolidated_html_report(
+        self,
+        backtest_results: Dict[str, Any],
+        benchmark_data: Optional[pd.Series],
+        filepath: Path
+    ) -> str:
+        """Generate a single consolidated HTML report with all charts and metrics."""
+        equity_curve = backtest_results.get('equity_curve', pd.Series([]))
+        returns = backtest_results.get('returns', pd.Series([]))
+        trades = backtest_results.get('trades', pd.DataFrame())
+        metrics = backtest_results.get('metrics', {})
+        strategy_name = backtest_results.get('strategy_name', 'Strategy')
+
+        # Create consolidated figure with subplots
+        from plotly.subplots import make_subplots
+
+        # Define subplot structure (3 rows, 2 columns)
+        fig = make_subplots(
+            rows=4, cols=2,
+            subplot_titles=[
+                'Equity Curve', 'Returns Distribution',
+                'Drawdown Analysis', 'Rolling Metrics',
+                'Monthly Returns', 'Trade Analysis',
+                'Performance Summary', 'Risk Analysis'
+            ],
+            specs=[
+                [{"secondary_y": False}, {"secondary_y": False}],
+                [{"secondary_y": False}, {"secondary_y": False}],
+                [{"secondary_y": False}, {"secondary_y": False}],
+                [{"type": "table"}, {"type": "table"}]
+            ],
+            vertical_spacing=0.08,
+            horizontal_spacing=0.1
+        )
+
+        # 1. Equity Curve (Row 1, Col 1)
+        if not equity_curve.empty:
+            fig.add_trace(
+                go.Scatter(
+                    x=equity_curve.index, y=equity_curve.values,
+                    mode='lines', name='Strategy', line=dict(color='blue', width=2)
+                ),
+                row=1, col=1
+            )
+            if benchmark_data is not None:
+                benchmark_normalized = benchmark_data / benchmark_data.iloc[0] * equity_curve.iloc[0]
+                fig.add_trace(
+                    go.Scatter(
+                        x=benchmark_normalized.index, y=benchmark_normalized.values,
+                        mode='lines', name='Benchmark', line=dict(color='red', width=2, dash='dash')
+                    ),
+                    row=1, col=1
+                )
+
+        # 2. Returns Distribution (Row 1, Col 2)
+        if not returns.empty:
+            fig.add_trace(
+                go.Histogram(x=returns.values, nbinsx=50, name='Returns Distribution'),
+                row=1, col=2
+            )
+
+        # 3. Drawdown (Row 2, Col 1)
+        if not equity_curve.empty:
+            peak = equity_curve.expanding().max()
+            drawdown = (equity_curve - peak) / peak
+            fig.add_trace(
+                go.Scatter(
+                    x=drawdown.index, y=drawdown.values * 100,
+                    mode='lines', name='Drawdown %',
+                    fill='tonexty', fillcolor='rgba(255,0,0,0.3)'
+                ),
+                row=2, col=1
+            )
+
+        # 4. Rolling Sharpe (Row 2, Col 2)
+        if not returns.empty:
+            rolling_sharpe = (returns.rolling(60).mean() / returns.rolling(60).std()) * np.sqrt(252)
+            fig.add_trace(
+                go.Scatter(
+                    x=rolling_sharpe.index, y=rolling_sharpe.values,
+                    mode='lines', name='60D Rolling Sharpe'
+                ),
+                row=2, col=2
+            )
+
+        # 5. Monthly Returns Heatmap (Row 3, Col 1)
+        if not returns.empty and len(returns) > 30:
+            monthly_returns = returns.resample('M').apply(lambda x: (1 + x).prod() - 1)
+            if len(monthly_returns) > 0:
+                fig.add_trace(
+                    go.Scatter(
+                        x=monthly_returns.index, y=monthly_returns.values * 100,
+                        mode='markers+lines', name='Monthly Returns %'
+                    ),
+                    row=3, col=1
+                )
+
+        # 6. Trade Analysis (Row 3, Col 2)
+        if not trades.empty:
+            fig.add_trace(
+                go.Scatter(
+                    x=trades['timestamp'], y=trades['quantity'],
+                    mode='markers', name='Trade Sizes'
+                ),
+                row=3, col=2
+            )
+
+        # 7. Performance Summary Table (Row 4, Col 1)
+        perf_summary = [
+            ['Metric', 'Value'],
+            ['Total Return', f"{metrics.get('total_return', 0):.2%}"],
+            ['Annual Return', f"{metrics.get('annualized_return', 0):.2%}"],
+            ['Volatility', f"{metrics.get('annualized_volatility', 0):.2%}"],
+            ['Sharpe Ratio', f"{metrics.get('sharpe_ratio', 0):.3f}"],
+            ['Max Drawdown', f"{metrics.get('max_drawdown', 0):.2%}"],
+            ['Win Rate', f"{metrics.get('win_rate', 0):.2%}"],
+            ['Total Trades', f"{metrics.get('total_trades', 0):.0f}"]
+        ]
+
+        fig.add_trace(
+            go.Table(
+                header=dict(values=perf_summary[0], fill_color='lightblue'),
+                cells=dict(values=list(zip(*perf_summary[1:])), fill_color='white')
+            ),
+            row=4, col=1
+        )
+
+        # 8. Risk Analysis Table (Row 4, Col 2)
+        risk_summary = [
+            ['Risk Metric', 'Value'],
+            ['VaR 95%', f"{metrics.get('var_95', 0):.2%}"],
+            ['CVaR 95%', f"{metrics.get('cvar_95', 0):.2%}"],
+            ['Downside Dev', f"{metrics.get('downside_deviation', 0):.2%}"],
+            ['Sortino Ratio', f"{metrics.get('sortino_ratio', 0):.3f}"],
+            ['Skewness', f"{metrics.get('skewness', 0):.3f}"],
+            ['Kurtosis', f"{metrics.get('kurtosis', 0):.3f}"],
+            ['Beta', f"{metrics.get('beta', 0):.3f}"]
+        ]
+
+        fig.add_trace(
+            go.Table(
+                header=dict(values=risk_summary[0], fill_color='lightcoral'),
+                cells=dict(values=list(zip(*risk_summary[1:])), fill_color='white')
+            ),
+            row=4, col=2
+        )
+
+        # Update layout
+        fig.update_layout(
+            title=f'{strategy_name} - Comprehensive Performance Report',
+            height=1400,  # Taller to accommodate all plots
+            showlegend=False,
+            template='plotly_white'
+        )
+
+        # Update axis labels
+        fig.update_xaxes(title_text="Date", row=1, col=1)
+        fig.update_yaxes(title_text="Portfolio Value", row=1, col=1)
+
+        fig.update_xaxes(title_text="Returns", row=1, col=2)
+        fig.update_yaxes(title_text="Frequency", row=1, col=2)
+
+        fig.update_xaxes(title_text="Date", row=2, col=1)
+        fig.update_yaxes(title_text="Drawdown %", row=2, col=1)
+
+        fig.update_xaxes(title_text="Date", row=2, col=2)
+        fig.update_yaxes(title_text="Sharpe Ratio", row=2, col=2)
+
+        # Save the consolidated report
+        fig.write_html(filepath)
+
+        self.logger.info(f"Consolidated HTML report saved to {filepath}")
         return str(filepath)
 
     def generate_comparison_report(
