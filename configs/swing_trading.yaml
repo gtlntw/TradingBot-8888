@@ -1,0 +1,254 @@
+# Swing Trading Configuration (2-8 week holding periods)
+# Optimized for on-chain + momentum hybrid approach
+
+# Data Configuration
+data:
+  sources:
+    - yfinance        # Price data
+    - glassnode       # On-chain metrics (smart money)
+    - coinglass       # Derivatives (sentiment)
+  symbols:
+    - BTC-USD
+  intervals:
+    - 1d              # Daily bars for swing trading
+  lookback_days: 730  # 2 years of history
+  update_frequency: 86400  # Daily updates
+
+  # On-chain data - Essential metrics for swing trading
+  onchain:
+    enabled: true
+    metrics:
+      # Market valuation
+      - mvrv                  # Market Value to Realized Value (top/bottom indicator)
+      - sopr                  # Spent Output Profit Ratio (profit taking)
+
+      # Whale activity (smart money)
+      - supply_top_1pct       # Top 1% holder concentration
+      - exchange_balance      # BTC on exchanges (selling pressure)
+      - exchange_net_flow     # Net inflow/outflow (accumulation/distribution)
+
+      # Supply dynamics
+      - illiquid_supply       # Long-term holders
+      - liquid_supply         # Short-term traders
+
+      # Network health
+      - active_addresses      # Network usage
+      - hash_rate            # Miner commitment
+    update_frequency: 86400  # Daily
+
+  # Derivatives data - Sentiment indicators
+  derivatives:
+    enabled: true
+    metrics:
+      - funding_rates         # Perpetual futures funding (overleveraged signals)
+      - liquidations         # Long/short squeeze indicators
+      - open_interest        # Market positioning
+    update_frequency: 3600   # Hourly (we'll aggregate to daily)
+
+# Feature Engineering - Multi-signal approach
+features:
+  # Technical (30% weight in ensemble)
+  technical_indicators:
+    - sma
+    - ema
+    - rsi
+    - macd
+    - bollinger_bands
+    - atr
+
+  # Market features (20% weight)
+  market_features:
+    - volume
+    - volatility
+    - price_change
+    - returns
+    - multi_timeframe_alignment
+
+  # On-chain features (40% weight - HIGHEST)
+  onchain_features:
+    - mvrv_zones              # Overheated/undervalued signals
+    - sopr_signals            # Profit taking indicators
+    - exchange_flows          # Whale accumulation/distribution
+    - supply_distribution     # HODLer behavior
+    - whale_activity          # Smart money tracking
+
+  # Sentiment (10% weight)
+  sentiment_features:
+    - funding_rate_extremes   # Overleveraged signals
+    - liquidation_cascades    # Forced selling/buying
+    - fear_greed_index
+
+  timeframes:
+    - 7                       # 1 week
+    - 14                      # 2 weeks
+    - 30                      # 1 month
+    - 60                      # 2 months
+
+# Model Configuration - Hybrid approach
+models:
+  algorithms:
+    - lightgbm                # Tabular features (on-chain, macro)
+    - transformer             # Temporal patterns (price sequences)
+
+  # Ensemble strategy
+  ensemble:
+    method: stacking
+    weights:
+      lightgbm: 0.6           # On-chain + tabular features (primary)
+      transformer: 0.4         # Temporal price patterns (secondary)
+
+  # Hyperparameters optimized for swing trading
+  hyperparameters:
+    lightgbm:
+      n_estimators: 200
+      max_depth: 8
+      learning_rate: 0.05
+      subsample: 0.8
+      colsample_bytree: 0.8
+
+    transformer:
+      num_heads: 8
+      ff_dim: 64
+      num_transformer_blocks: 3
+      mlp_units: [256, 128]
+      dropout: 0.15
+      epochs: 100
+      batch_size: 32
+      learning_rate: 0.0005
+
+# Training Configuration
+training:
+  target: future_return_4w    # Predict 4-week forward return
+  validation:
+    method: time_series_split
+    n_splits: 5
+    test_size: 0.15           # 15% test set
+
+  # Walk-forward optimization
+  walk_forward:
+    enabled: true
+    train_window: 365         # Train on 1 year
+    test_window: 60           # Test on 2 months
+    retrain_frequency: 30     # Retrain monthly
+
+  feature_selection:
+    enabled: true
+    method: importance
+    top_n_features: 50        # Use top 50 features
+
+# Trading Configuration - Swing trading optimized
+trading:
+  mode: paper                 # Start with paper trading
+
+  # Signal generation strategy
+  strategy:
+    type: ensemble_probabilistic
+    signal_threshold: 0.65    # Higher threshold for quality
+    confidence_threshold: 0.7  # Require high confidence
+
+    # Entry conditions (all must be true)
+    entry_conditions:
+      - on_chain_bullish       # Whales accumulating
+      - momentum_positive      # Price confirming
+      - macro_favorable        # Not in risk-off regime
+      - low_leverage          # Funding rates not extreme
+
+    # Exit conditions (any can trigger)
+    exit_conditions:
+      - time_based            # 4-8 week holding period
+      - signal_reversal       # Model flips bearish
+      - stop_loss_hit         # Risk management
+      - take_profit_hit       # Lock in gains
+
+  # Position sizing - Kelly criterion based on edge
+  position_sizing:
+    method: kelly
+    kelly_safety_margin: 0.25  # 1/4 Kelly for safety
+    max_position: 0.30         # Never more than 30% of portfolio
+    min_position: 0.05         # Minimum 5% when entering
+
+  # Risk management
+  risk_management:
+    max_drawdown: 0.25         # 25% max drawdown tolerance
+    var_limit: 0.08           # 8% daily VaR limit
+    stop_loss: 0.15           # 15% stop loss (volatility-based)
+    take_profit: 0.40         # 40% take profit target
+    trailing_stop: true
+    trailing_stop_activation: 0.20  # Start trailing at +20%
+    trailing_stop_distance: 0.10    # Trail by 10%
+
+  # Execution settings
+  execution:
+    slippage: 0.002           # 0.2% slippage assumption
+    commission: 0.001         # 0.1% commission
+    order_type: limit         # Use limit orders
+    timeout: 3600             # 1 hour order timeout
+
+# Regime Detection Configuration
+regime:
+  enabled: true
+  detection_method: hmm       # Hidden Markov Model
+  regimes:
+    - risk_on                 # Growth mode (follow momentum)
+    - risk_off                # Defense mode (reduce exposure)
+    - crypto_specific         # BTC decoupled (highest alpha)
+    - consolidation           # Sideways (mean reversion)
+
+  regime_indicators:
+    - spy_returns             # S&P 500 as risk sentiment
+    - dxy_trend               # Dollar strength
+    - gold_correlation        # Safe haven demand
+    - btc_correlation         # Correlation regime
+
+# Evaluation Configuration
+evaluation:
+  metrics:
+    # Return metrics
+    - total_return
+    - annualized_return
+    - sharpe_ratio
+    - sortino_ratio
+    - calmar_ratio
+
+    # Risk metrics
+    - max_drawdown
+    - volatility
+    - value_at_risk
+    - conditional_var
+
+    # Trading metrics
+    - win_rate
+    - profit_factor
+    - average_trade_duration
+    - max_consecutive_losses
+
+  baselines:
+    - buy_and_hold
+    - moving_average_crossover
+    - rsi_strategy
+
+  reporting:
+    generate_plots: true
+    create_html_report: true
+    save_predictions: true
+    detailed_analysis: true
+
+# Backtesting Configuration
+backtesting:
+  initial_capital: 100000
+  start_date: 2020-01-01
+  end_date: 2024-12-31
+  rebalance_frequency: weekly
+  include_costs: true
+
+# Logging Configuration
+logging:
+  level: INFO
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  handlers:
+    - console
+    - file
+  file_config:
+    filename: logs/swing_trading.log
+    max_bytes: 10485760
+    backup_count: 5

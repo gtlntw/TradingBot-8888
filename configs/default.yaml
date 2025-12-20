@@ -4,6 +4,8 @@
 data:
   sources:
     - yfinance
+    - glassnode  # On-chain metrics
+    - coinglass  # Derivatives data
   symbols:
     - BTC-USD
     - BTC-USDT
@@ -13,6 +15,30 @@ data:
     - 1d
   lookback_days: 365
   update_frequency: 3600  # seconds
+
+  # On-chain data configuration
+  onchain:
+    enabled: true
+    metrics:
+      - mvrv
+      - sopr
+      - exchange_balance
+      - exchange_net_flow
+      - illiquid_supply
+      - liquid_supply
+      - supply_top_1pct
+      - active_addresses
+      - hash_rate
+    update_frequency: 86400  # daily updates
+
+  # Derivatives data configuration
+  derivatives:
+    enabled: true
+    metrics:
+      - funding_rates
+      - liquidations
+      - open_interest
+    update_frequency: 3600  # hourly updates
 
 # Feature Engineering
 features:
@@ -33,6 +59,12 @@ features:
   sentiment_features:
     - fear_greed_index
     - social_sentiment
+  onchain_features:
+    - mvrv_zones
+    - sopr_signals
+    - exchange_flows
+    - supply_distribution
+    - whale_activity
   timeframes:
     - 5
     - 10

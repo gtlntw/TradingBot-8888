@@ -440,6 +440,105 @@ class SentimentFeatures(FeatureCalculator, LoggerMixin):
         return df
 
 
+class OnChainFeatures(FeatureCalculator, LoggerMixin):
+    """Calculate on-chain and derivatives-based features."""
+
+    def __init__(self, config: Optional[Dict] = None):
+        """Initialize on-chain features calculator."""
+        self.config = config or {}
+
+    def calculate(self, df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Calculate on-chain features.
+
+        Args:
+            df: DataFrame with on-chain metrics
+
+        Returns:
+            DataFrame with calculated on-chain features
+        """
+        df_features = df.copy()
+
+        # Add on-chain features if columns exist
+        if 'mvrv' in df.columns:
+            df_features = self._add_mvrv_features(df_features)
+
+        if 'sopr' in df.columns:
+            df_features = self._add_sopr_features(df_features)
+
+        if 'exchange_net_flow' in df.columns:
+            df_features = self._add_exchange_flow_features(df_features)
+
+        if 'illiquid_supply' in df.columns and 'liquid_supply' in df.columns:
+            df_features = self._add_supply_features(df_features)
+
+        self.logger.info(f"Added on-chain features. Features: {df_features.shape[1]}")
+        return df_features
+
+    def _add_mvrv_features(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Add MVRV-based features."""
+        # MVRV zones (market tops/bottoms)
+        df['mvrv_overheated'] = (df['mvrv'] > 3.5).astype(int)  # Historical top zone
+        df['mvrv_undervalued'] = (df['mvrv'] < 1.0).astype(int)  # Historical bottom zone
+
+        # MVRV momentum
+        df['mvrv_change_7d'] = df['mvrv'].pct_change(periods=7)
+        df['mvrv_change_30d'] = df['mvrv'].pct_change(periods=30)
+
+        # MVRV moving average
+        df['mvrv_sma_30'] = df['mvrv'].rolling(window=30).mean()
+        df['mvrv_deviation'] = (df['mvrv'] - df['mvrv_sma_30']) / df['mvrv_sma_30']
+
+        return df
+
+    def _add_sopr_features(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Add SOPR (Spent Output Profit Ratio) features."""
+        # SOPR zones
+        df['sopr_profitable'] = (df['sopr'] > 1.0).astype(int)  # Profits being taken
+        df['sopr_loss'] = (df['sopr'] < 1.0).astype(int)  # Selling at loss
+
+        # SOPR momentum
+        df['sopr_change_7d'] = df['sopr'].pct_change(periods=7)
+
+        # SOPR moving average
+        df['sopr_sma_7'] = df['sopr'].rolling(window=7).mean()
+        df['sopr_above_ma'] = (df['sopr'] > df['sopr_sma_7']).astype(int)
+
+        return df
+
+    def _add_exchange_flow_features(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Add exchange flow features."""
+        # Flow direction
+        df['net_flow_direction'] = np.sign(df['exchange_net_flow'])  # 1=inflow, -1=outflow
+
+        # Flow magnitude (rolling sum)
+        df['net_flow_7d'] = df['exchange_net_flow'].rolling(window=7).sum()
+        df['net_flow_30d'] = df['exchange_net_flow'].rolling(window=30).sum()
+
+        # Flow acceleration
+        df['net_flow_acceleration'] = df['net_flow_7d'].diff()
+
+        # Strong accumulation/distribution signals
+        df['strong_accumulation'] = (df['net_flow_7d'] < -df['net_flow_30d'].quantile(0.1)).astype(int)
+        df['strong_distribution'] = (df['net_flow_7d'] > df['net_flow_30d'].quantile(0.9)).astype(int)
+
+        return df
+
+    def _add_supply_features(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Add supply distribution features."""
+        # Liquidity ratio
+        df['liquidity_ratio'] = df['liquid_supply'] / (df['liquid_supply'] + df['illiquid_supply'])
+
+        # Supply changes
+        df['illiquid_supply_change_30d'] = df['illiquid_supply'].pct_change(periods=30)
+        df['liquid_supply_change_30d'] = df['liquid_supply'].pct_change(periods=30)
+
+        # HODLing pressure (increasing illiquid supply = bullish)
+        df['hodl_pressure'] = df['illiquid_supply_change_30d'] > 0
+
+        return df
+
+
 class FeatureEngineer(LoggerMixin):
     """Main feature engineering class that combines all feature calculators."""
 
@@ -455,6 +554,7 @@ class FeatureEngineer(LoggerMixin):
             'technical': TechnicalIndicators(self.config.get('technical', {})),
             'market': MarketFeatures(),
             'sentiment': SentimentFeatures(self.config.get('sentiment', {})),
+            'onchain': OnChainFeatures(self.config.get('onchain', {})),
         }
 
     @timing

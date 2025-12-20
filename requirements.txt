@@ -44,3 +44,8 @@ mypy>=1.5.0
 click>=8.1.0
 tqdm>=4.65.0
 schedule>=1.2.0
+# On-chain and derivatives data
+# Note: Glassnode and Coinglass require API keys
+# Get yours at:
+# - Glassnode: https://glassnode.com (free tier: 20 requests/day)
+# - Coinglass: https://coinglass.com (free tier available)
