@@ -331,7 +331,9 @@ class PipelineExperiment:
             print("ENSEMBLE MODEL (Voting)")
             print("="*80)
 
-            ensemble = EnsembleModel(self.models, method='voting')
+            # Create ensemble with a copy of base models to avoid circular reference
+            base_models = {k: v for k, v in self.models.items()}
+            ensemble = EnsembleModel(base_models, method='voting')
             ensemble.fit(self.X_train.values, self.y_train.values)
 
             # Add ensemble to models dict so it gets backtested
