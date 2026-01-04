@@ -334,6 +334,9 @@ class PipelineExperiment:
             ensemble = EnsembleModel(self.models, method='voting')
             ensemble.fit(self.X_train.values, self.y_train.values)
 
+            # Add ensemble to models dict so it gets backtested
+            self.models['ensemble'] = ensemble
+
             ensemble_pred = ensemble.predict(self.X_test.values)
             ensemble_metrics = metrics_calc.calculate_ml_metrics(
                 self.y_test.values,
