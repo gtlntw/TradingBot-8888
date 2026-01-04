@@ -1,8 +1,16 @@
 """
 Pipeline testing script for experimenting with different configurations.
 
-Tests the complete ML pipeline (steps 1-5) with various prediction horizons
-and saves results for comparison.
+Tests the complete ML pipeline (steps 1-6) with various prediction horizons,
+backtesting, and saves results for comparison.
+
+Steps:
+1. Data Collection
+2. Data Preprocessing
+3. Feature Engineering
+4. Model Training
+5. Model Evaluation
+6. Backtesting (with buy-and-hold comparison)
 
 Usage:
     python scripts/test_pipeline.py --horizons 1 7 14 28
@@ -30,6 +38,7 @@ from trading_bot.data.features import FeatureEngineer
 from trading_bot.models.trainer import ModelTrainer
 from trading_bot.models.ensemble import EnsembleModel
 from trading_bot.evaluation.metrics import PerformanceMetrics
+from trading_bot.evaluation.backtester import Backtester
 from trading_bot.utils.logger import setup_logging, get_logger
 from trading_bot.utils.helpers import setup_directories, generate_timestamp
 
@@ -100,6 +109,9 @@ class PipelineExperiment:
 
             # Step 5: Model Evaluation
             self._step5_evaluate()
+
+            # Step 6: Backtesting
+            self._step6_backtest()
 
             # Save results
             self._save_results()
@@ -347,6 +359,133 @@ class PipelineExperiment:
                 'directional_accuracy': float(ensemble_directional)
             }
 
+    def _step6_backtest(self):
+        """Step 6: Backtest trading strategies."""
+        print("\n" + "="*80)
+        print("STEP 6: BACKTESTING")
+        print("="*80)
+
+        # Get test period price data
+        test_data = self.features.loc[self.X_test.index].copy()
+
+        # Initialize results storage
+        self.results['backtesting'] = {}
+
+        # Backtest each model
+        for name, model in self.models.items():
+            print(f"\nBacktesting {name.upper()}...")
+
+            # Get predictions
+            predictions = model.predict(self.X_test.values)
+
+            # Generate signals (simple threshold strategy)
+            # Buy if predicted return > 0, Sell/Hold if predicted return < 0
+            signals = pd.Series(0, index=self.X_test.index)
+            signals[predictions > 0] = 1   # Buy signal
+            signals[predictions < 0] = -1  # Sell signal
+
+            # Run backtest
+            backtester = Backtester(
+                initial_capital=100000,
+                commission=0.001,  # 0.1% per trade
+                slippage=0.001     # 0.1% slippage
+            )
+
+            backtest_results = backtester.run_backtest(
+                data=test_data,
+                signals=signals,
+                strategy_name=f"{name}_{self.prediction_horizon}d",
+                position_size=0.95,  # Use 95% of capital per trade
+                stop_loss=None,      # No stop loss for simplicity
+                take_profit=None     # No take profit
+            )
+
+            metrics = backtest_results.get('metrics', {})
+
+            print(f"  Total Return: {metrics.get('total_return', 0):.2%}")
+            print(f"  Sharpe Ratio: {metrics.get('sharpe_ratio', 0):.3f}")
+            print(f"  Max Drawdown: {metrics.get('max_drawdown', 0):.2%}")
+            print(f"  Win Rate: {metrics.get('win_rate', 0):.2%}")
+            print(f"  Total Trades: {metrics.get('total_trades', 0)}")
+            print(f"  Avg Trade Return: {metrics.get('avg_trade_return', 0):.2%}")
+
+            # Store backtest results
+            self.results['backtesting'][name] = {
+                'total_return': float(metrics.get('total_return', 0)),
+                'sharpe_ratio': float(metrics.get('sharpe_ratio', 0)),
+                'max_drawdown': float(metrics.get('max_drawdown', 0)),
+                'win_rate': float(metrics.get('win_rate', 0)),
+                'total_trades': int(metrics.get('total_trades', 0)),
+                'avg_trade_return': float(metrics.get('avg_trade_return', 0)),
+                'final_value': float(metrics.get('final_value', 100000))
+            }
+
+            # Store model predictions in results
+            self.results['models'][name]['backtest_return'] = float(metrics.get('total_return', 0))
+            self.results['models'][name]['backtest_sharpe'] = float(metrics.get('sharpe_ratio', 0))
+            self.results['models'][name]['backtest_trades'] = int(metrics.get('total_trades', 0))
+
+        # Buy-and-Hold Baseline
+        print("\n" + "="*80)
+        print("BUY-AND-HOLD BASELINE")
+        print("="*80)
+
+        # Calculate buy-and-hold return
+        first_price = test_data['close'].iloc[0]
+        last_price = test_data['close'].iloc[-1]
+        bh_return = (last_price / first_price) - 1
+
+        # Calculate buy-and-hold Sharpe
+        test_returns = test_data['close'].pct_change().dropna()
+        bh_sharpe = (test_returns.mean() / test_returns.std()) * np.sqrt(252) if test_returns.std() > 0 else 0
+
+        # Max drawdown for buy-and-hold
+        cumulative = (1 + test_returns).cumprod()
+        running_max = cumulative.expanding().max()
+        drawdown = (cumulative - running_max) / running_max
+        bh_max_dd = drawdown.min()
+
+        print(f"  Total Return: {bh_return:.2%}")
+        print(f"  Sharpe Ratio: {bh_sharpe:.3f}")
+        print(f"  Max Drawdown: {bh_max_dd:.2%}")
+        print(f"  Trades: 1 (buy and hold)")
+
+        self.results['backtesting']['buy_and_hold'] = {
+            'total_return': float(bh_return),
+            'sharpe_ratio': float(bh_sharpe),
+            'max_drawdown': float(bh_max_dd),
+            'total_trades': 1
+        }
+
+        # Summary comparison
+        print("\n" + "="*80)
+        print("BACKTEST SUMMARY (vs Buy-and-Hold)")
+        print("="*80)
+
+        best_model = None
+        best_return = bh_return
+
+        for name, bt_results in self.results['backtesting'].items():
+            if name == 'buy_and_hold':
+                continue
+
+            model_return = bt_results['total_return']
+            outperformance = model_return - bh_return
+
+            print(f"{name}: {model_return:.2%} (vs BH: {outperformance:+.2%}, "
+                  f"Trades: {bt_results['total_trades']})")
+
+            if model_return > best_return:
+                best_return = model_return
+                best_model = name
+
+        if best_model:
+            print(f"\n✓ Best Strategy: {best_model.upper()} with {best_return:.2%} return")
+            self.results['best_backtest_model'] = best_model
+        else:
+            print(f"\n⚠ Buy-and-hold outperforms all models ({bh_return:.2%})")
+            self.results['best_backtest_model'] = 'buy_and_hold'
+
     def _save_results(self):
         """Save experiment results."""
         results_file = self.experiment_dir / f'results_{self.timestamp}.json'
@@ -395,14 +534,18 @@ def _generate_comparison_report(all_results: dict):
 
     for horizon_name, results in all_results.items():
         for model_name, metrics in results['models'].items():
-            comparison_data.append({
+            row = {
                 'Horizon': horizon_name,
                 'Model': model_name,
                 'R²': metrics['r2_score'],
                 'RMSE': metrics['rmse'],
                 'MAE': metrics['mae'],
-                'Directional Acc': metrics['directional_accuracy']
-            })
+                'Directional Acc': metrics['directional_accuracy'],
+                'Backtest Return': metrics.get('backtest_return', 0),
+                'Backtest Sharpe': metrics.get('backtest_sharpe', 0),
+                'Backtest Trades': metrics.get('backtest_trades', 0)
+            }
+            comparison_data.append(row)
 
     if comparison_data:
         df_comparison = pd.DataFrame(comparison_data)
@@ -414,12 +557,31 @@ def _generate_comparison_report(all_results: dict):
         ]
         print(best_by_horizon.to_string(index=False))
 
-        print("\nBest Models by R²:")
+        print("\nBest Models by Backtest Return:")
         print("-" * 80)
-        best_by_r2 = df_comparison.loc[
-            df_comparison.groupby('Horizon')['R²'].idxmax()
+        best_by_backtest = df_comparison.loc[
+            df_comparison.groupby('Horizon')['Backtest Return'].idxmax()
         ]
-        print(best_by_r2.to_string(index=False))
+        print(best_by_backtest.to_string(index=False))
+
+        print("\nBest Models by Sharpe Ratio:")
+        print("-" * 80)
+        best_by_sharpe = df_comparison.loc[
+            df_comparison.groupby('Horizon')['Backtest Sharpe'].idxmax()
+        ]
+        print(best_by_sharpe.to_string(index=False))
+
+        # Buy-and-hold comparison
+        print("\n" + "="*80)
+        print("BUY-AND-HOLD COMPARISON")
+        print("="*80)
+        for horizon_name, results in all_results.items():
+            if 'backtesting' in results and 'buy_and_hold' in results['backtesting']:
+                bh_return = results['backtesting']['buy_and_hold']['total_return']
+                best_model_return = df_comparison[df_comparison['Horizon'] == horizon_name]['Backtest Return'].max()
+                outperformance = best_model_return - bh_return
+                print(f"{horizon_name}: Best={best_model_return:.2%}, BH={bh_return:.2%}, "
+                      f"Outperformance={outperformance:+.2%}")
 
         # Save comparison
         reports_dir = Path('experiments/reports')
