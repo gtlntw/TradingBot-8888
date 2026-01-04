@@ -228,8 +228,10 @@ class PipelineExperiment:
         X_train, X_test = X.iloc[:split_idx], X.iloc[split_idx:]
         y_train, y_test = y.iloc[:split_idx], y.iloc[split_idx:]
 
-        print(f"✓ Train: {len(X_train)} samples, Test: {len(X_test)} samples")
+        print(f"✓ Train: {len(X_train)} samples ({X_train.index[0]} to {X_train.index[-1]})")
+        print(f"✓ Test:  {len(X_test)} samples ({X_test.index[0]} to {X_test.index[-1]})")
         print(f"  Features: {len(feature_cols)}")
+        print(f"  Data loss from horizon: {len(self.clean_data) - len(self.features)} days")
 
         # Train models
         trainer = ModelTrainer(self.settings)
@@ -253,7 +255,10 @@ class PipelineExperiment:
             'target_column': target_col,
             'num_features': len(feature_cols),
             'train_samples': len(X_train),
+            'train_date_range': [str(X_train.index[0]), str(X_train.index[-1])],
             'test_samples': len(X_test),
+            'test_date_range': [str(X_test.index[0]), str(X_test.index[-1])],
+            'data_loss_from_horizon': len(self.clean_data) - len(self.features),
             'models_trained': list(models.keys()),
             'models_dir': str(models_dir)
         }
