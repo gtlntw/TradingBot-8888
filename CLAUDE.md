@@ -4,13 +4,32 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Development Setup
 
+### Quick Installation
+
 ```bash
-# Install dependencies
+# Install dependencies with workaround for build issues
+pip install multitasking --use-pep517  # Fixes common build error
+pip install ta --use-pep517            # Fixes ta library build error
 pip install -r requirements.txt
 
 # Install in development mode
 pip install -e .
+```
 
+**Note**: `pandas-ta` is commented out in requirements.txt due to Python 3.11 compatibility issues. The `ta` library provides sufficient technical indicators.
+
+### Alternative: Single Command Installation
+
+```bash
+# Install all core dependencies directly
+pip install multitasking --use-pep517 && \
+pip install numpy pandas scipy scikit-learn xgboost lightgbm yfinance ta \
+PyYAML python-dotenv aiohttp requests tqdm ccxt matplotlib seaborn plotly tensorflow
+```
+
+### Docker Setup
+
+```bash
 # Run with Docker
 docker-compose up
 
@@ -65,6 +84,23 @@ This is a machine learning-powered Bitcoin trading bot with a modular, pipeline-
 5. **Evaluation** (`trading_bot/evaluation/`) - Backtesting, performance metrics, baseline comparisons
 6. **Trading Engine** (`trading_bot/trading/`) - Signal generation, risk management, execution
 
+### Pipeline Defaults
+
+**Prediction Horizon**: 1 period ahead (hardcoded via `shift(-1)`)
+- For daily data (1d): Predicts next day's return
+- For hourly data (1h): Predicts next hour's return
+- Target formula: `(next_close / current_close) - 1`
+- Location: `trading_bot/cli.py` lines 225, 306
+
+**Models Trained by Default**:
+1. Random Forest (tree-based ensemble)
+2. XGBoost (gradient boosting)
+3. LightGBM (fast gradient boosting)
+4. LSTM (deep learning, sequence model)
+5. Transformer (advanced deep learning)
+
+**Data Split**: 80% train / 20% test (time-series split, respects temporal order)
+
 ### Key Abstract Base Classes & Interfaces
 
 **Data Layer**:
@@ -100,7 +136,7 @@ This is a machine learning-powered Bitcoin trading bot with a modular, pipeline-
 - `SentimentFeatures`: Fear/Greed index, market sentiment indicators
 
 **Model Training & Ensemble Framework**:
-- `ModelTrainer` supports multiple algorithms: RandomForest, XGBoost, LightGBM, LSTM
+- `ModelTrainer` supports multiple algorithms: RandomForest, XGBoost, LightGBM, LSTM, Transformer
 - `EnsembleModel` combines models using voting, stacking, or blending
 - All models inherit from `BaseModel` with standardized fit/predict/save/load interface
 - Hyperparameter optimization with time-series cross-validation

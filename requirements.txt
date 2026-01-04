@@ -18,7 +18,7 @@ websocket-client>=1.6.0
 
 # Technical analysis
 ta>=0.10.0
-pandas-ta>=0.3.0
+# pandas-ta>=0.3.0  # Not available for this Python version
 
 # Database
 sqlalchemy>=2.0.0
