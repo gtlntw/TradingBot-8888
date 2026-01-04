@@ -102,6 +102,13 @@ logs/*
 !data/models/.gitkeep
 !logs/.gitkeep
 
+# Experiment results (keep structure, ignore data)
+experiments/results/*/
+experiments/reports/*.csv
+experiments/reports/*.json
+!experiments/results/.gitkeep
+!experiments/reports/.gitkeep
+
 # Model files
 *.pkl
 *.joblib
