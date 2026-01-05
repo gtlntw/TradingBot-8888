@@ -341,6 +341,16 @@ class PipelineExperiment:
                     'kwargs': {},
                     'description': 'Voting (MSE-optimized weights)'
                 },
+                'ensemble_voting_sharpe': {
+                    'method': 'voting',
+                    'kwargs': {'optimize_for_sharpe': True, 'validation_split': 0.2},
+                    'description': 'Voting (Sharpe-optimized weights) 🎯'
+                },
+                'ensemble_voting_sharpe_diverse': {
+                    'method': 'voting',
+                    'kwargs': {'optimize_for_sharpe': True, 'min_weight': 0.05, 'validation_split': 0.2},
+                    'description': 'Voting (Sharpe + diversity)'
+                },
                 'ensemble_voting_equal': {
                     'method': 'voting',
                     'kwargs': {'use_equal_weights': True},

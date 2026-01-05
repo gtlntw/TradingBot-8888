@@ -59,7 +59,8 @@ class VotingEnsemble(EnsembleMethod):
     """Voting ensemble that averages predictions from multiple models."""
 
     def __init__(self, models: Dict[str, BaseModel], weights: Optional[List[float]] = None,
-                 use_equal_weights: bool = False, min_weight: float = 0.0):
+                 use_equal_weights: bool = False, min_weight: float = 0.0,
+                 optimize_for_sharpe: bool = False, validation_split: float = 0.2):
         """
         Initialize voting ensemble.
 
@@ -68,11 +69,15 @@ class VotingEnsemble(EnsembleMethod):
             weights: Optional weights for weighted voting
             use_equal_weights: If True, use equal weights (no optimization)
             min_weight: Minimum weight per model (diversity constraint)
+            optimize_for_sharpe: If True, optimize for Sharpe ratio instead of MSE
+            validation_split: Fraction of training data to use for validation (default 0.2)
         """
         super().__init__(models)
         self.weights = weights
         self.use_equal_weights = use_equal_weights
         self.min_weight = min_weight
+        self.optimize_for_sharpe = optimize_for_sharpe
+        self.validation_split = validation_split
 
     def fit(self, X: np.ndarray, y: np.ndarray) -> 'VotingEnsemble':
         """
@@ -93,8 +98,11 @@ class VotingEnsemble(EnsembleMethod):
                 n_models = len(self.models)
                 self.weights = [1.0 / n_models] * n_models
                 self.logger.info("Using equal weights (no optimization)")
+            elif self.optimize_for_sharpe:
+                # Optimize for Sharpe ratio on validation set
+                self.weights = self._optimize_weights_for_sharpe(X, y)
             else:
-                # Optimize weights
+                # Optimize for MSE
                 self.weights = self._optimize_weights(X, y)
 
         self.is_fitted = True
@@ -192,6 +200,101 @@ class VotingEnsemble(EnsembleMethod):
             self.logger.info(f"Weight optimization successful. MSE: {result.fun:.6f}")
         else:
             self.logger.warning("Weight optimization failed, using equal weights")
+            optimized_weights = [1.0 / n_models] * n_models
+
+        return optimized_weights
+
+    def _optimize_weights_for_sharpe(self, X: np.ndarray, y: np.ndarray) -> List[float]:
+        """
+        Optimize ensemble weights for Sharpe ratio on validation set.
+
+        Args:
+            X: Training features
+            y: Training targets (returns)
+
+        Returns:
+            Optimized weights
+        """
+        from scipy.optimize import minimize
+
+        model_names = list(self.models.keys())
+        n_models = len(model_names)
+
+        # Split into train/validation (time-series aware)
+        val_size = int(len(X) * self.validation_split)
+        train_size = len(X) - val_size
+
+        X_train, X_val = X[:train_size], X[train_size:]
+        y_train, y_val = y[:train_size], y[train_size:]
+
+        self.logger.info(f"Split for Sharpe optimization: {train_size} train, {val_size} validation")
+
+        # Get predictions from each model on validation set
+        val_predictions = []
+        for name in model_names:
+            pred = self.models[name].predict(X_val)
+            val_predictions.append(pred)
+
+        val_predictions = np.array(val_predictions).T  # Shape: (val_size, n_models)
+
+        def objective(weights):
+            """Minimize negative Sharpe ratio (maximize Sharpe)."""
+            weights = weights / np.sum(weights)  # Normalize weights
+
+            # Ensemble predictions
+            ensemble_pred = np.average(val_predictions, axis=1, weights=weights)
+
+            # Generate trading signals
+            signals = np.sign(ensemble_pred)
+
+            # Calculate strategy returns (assumes y_val are actual returns)
+            # Strategy return = signal * actual_return
+            strategy_returns = signals * y_val
+
+            # Calculate Sharpe ratio
+            mean_return = np.mean(strategy_returns)
+            std_return = np.std(strategy_returns)
+
+            if std_return == 0 or np.isnan(std_return):
+                return 1e10  # Bad solution
+
+            sharpe = mean_return / std_return
+
+            # Add diversity bonus
+            diversity_bonus = np.std(weights) * 0.1
+
+            return -sharpe - diversity_bonus  # Minimize negative Sharpe
+
+        # Constraints: weights sum to 1
+        constraints = {'type': 'eq', 'fun': lambda w: np.sum(w) - 1}
+
+        # Apply diversity constraints if min_weight is set
+        if self.min_weight > 0:
+            max_weight = 1.0 - (n_models - 1) * self.min_weight
+            bounds = [(self.min_weight, max_weight) for _ in range(n_models)]
+            self.logger.info(f"Using diversity constraints: min_weight={self.min_weight:.2f}")
+        else:
+            bounds = [(0, 1) for _ in range(n_models)]
+
+        # Initial guess: equal weights
+        initial_weights = np.ones(n_models) / n_models
+
+        # Optimize
+        result = minimize(
+            objective,
+            initial_weights,
+            method='SLSQP',
+            bounds=bounds,
+            constraints=constraints,
+            options={'maxiter': 200}
+        )
+
+        if result.success:
+            optimized_weights = result.x.tolist()
+            sharpe = -result.fun  # Convert back to positive
+            self.logger.info(f"Sharpe optimization successful. Sharpe: {sharpe:.4f}")
+        else:
+            self.logger.warning("Sharpe optimization failed, using equal weights")
             optimized_weights = [1.0 / n_models] * n_models
 
         return optimized_weights
