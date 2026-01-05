@@ -317,6 +317,10 @@ class LSTMModel(BaseModel):
         self.logger.info(f"Training LSTM {self.model_type} model with {X.shape[0]} samples")
         start_time = datetime.now()
 
+        # Set random seeds for reproducibility
+        np.random.seed(42)
+        tf.random.set_seed(42)
+
         # Reshape 2D input to 3D for LSTM (samples, timesteps=1, features)
         if len(X.shape) == 2:
             X = X.reshape(X.shape[0], 1, X.shape[1])
@@ -488,6 +492,10 @@ class TransformerModel(BaseModel):
 
         self.logger.info(f"Training Transformer {self.model_type} model with {X.shape[0]} samples")
         start_time = datetime.now()
+
+        # Set random seeds for reproducibility
+        np.random.seed(42)
+        tf.random.set_seed(42)
 
         # Reshape 2D input to 3D for Transformer (samples, timesteps=1, features)
         if len(X.shape) == 2:
