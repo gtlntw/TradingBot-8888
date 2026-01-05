@@ -58,16 +58,21 @@ class EnsembleMethod(ABC, LoggerMixin):
 class VotingEnsemble(EnsembleMethod):
     """Voting ensemble that averages predictions from multiple models."""
 
-    def __init__(self, models: Dict[str, BaseModel], weights: Optional[List[float]] = None):
+    def __init__(self, models: Dict[str, BaseModel], weights: Optional[List[float]] = None,
+                 use_equal_weights: bool = False, min_weight: float = 0.0):
         """
         Initialize voting ensemble.
 
         Args:
             models: Dictionary of trained models
             weights: Optional weights for weighted voting
+            use_equal_weights: If True, use equal weights (no optimization)
+            min_weight: Minimum weight per model (diversity constraint)
         """
         super().__init__(models)
         self.weights = weights
+        self.use_equal_weights = use_equal_weights
+        self.min_weight = min_weight
 
     def fit(self, X: np.ndarray, y: np.ndarray) -> 'VotingEnsemble':
         """
@@ -83,8 +88,14 @@ class VotingEnsemble(EnsembleMethod):
         self._validate_models()
 
         if self.weights is None:
-            # Use equal weights or optimize weights
-            self.weights = self._optimize_weights(X, y)
+            if self.use_equal_weights:
+                # Use equal weights (no optimization)
+                n_models = len(self.models)
+                self.weights = [1.0 / n_models] * n_models
+                self.logger.info("Using equal weights (no optimization)")
+            else:
+                # Optimize weights
+                self.weights = self._optimize_weights(X, y)
 
         self.is_fitted = True
         self.logger.info(f"Voting ensemble fitted with weights: {dict(zip(self.models.keys(), self.weights))}")
@@ -155,7 +166,14 @@ class VotingEnsemble(EnsembleMethod):
 
         # Constraints: weights sum to 1 and are positive
         constraints = {'type': 'eq', 'fun': lambda w: np.sum(w) - 1}
-        bounds = [(0, 1) for _ in range(n_models)]
+
+        # Apply diversity constraints if min_weight is set
+        if self.min_weight > 0:
+            max_weight = 1.0 - (n_models - 1) * self.min_weight  # Ensure weights can sum to 1
+            bounds = [(self.min_weight, max_weight) for _ in range(n_models)]
+            self.logger.info(f"Using diversity constraints: min_weight={self.min_weight:.2f}")
+        else:
+            bounds = [(0, 1) for _ in range(n_models)]
 
         # Initial guess: equal weights
         initial_weights = np.ones(n_models) / n_models

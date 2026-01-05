@@ -325,44 +325,86 @@ class PipelineExperiment:
                 'directional_accuracy': float(directional_accuracy)
             }
 
-        # Ensemble
+        # Ensemble Methods Comparison
         if len(self.models) > 1:
             print("\n" + "="*80)
-            print("ENSEMBLE MODEL (Voting)")
+            print("ENSEMBLE MODELS COMPARISON")
             print("="*80)
 
-            # Create ensemble with a copy of base models to avoid circular reference
+            # Create base models copy to avoid circular reference
             base_models = {k: v for k, v in self.models.items()}
-            ensemble = EnsembleModel(base_models, method='voting')
-            ensemble.fit(self.X_train.values, self.y_train.values)
 
-            # Add ensemble to models dict so it gets backtested
-            self.models['ensemble'] = ensemble
-
-            ensemble_pred = ensemble.predict(self.X_test.values)
-            ensemble_metrics = metrics_calc.calculate_ml_metrics(
-                self.y_test.values,
-                ensemble_pred,
-                model_type='regression'
-            )
-
-            ensemble_directional = np.mean(
-                np.sign(self.y_test.values) == np.sign(ensemble_pred)
-            )
-
-            print(f"  MSE:  {ensemble_metrics['mse']:.8f}")
-            print(f"  RMSE: {ensemble_metrics['rmse']:.8f}")
-            print(f"  MAE:  {ensemble_metrics['mae']:.8f}")
-            print(f"  R²:   {ensemble_metrics['r2_score']:.6f}")
-            print(f"  Directional Accuracy: {ensemble_directional:.2%}")
-
-            self.results['models']['ensemble'] = {
-                'mse': float(ensemble_metrics['mse']),
-                'rmse': float(ensemble_metrics['rmse']),
-                'mae': float(ensemble_metrics['mae']),
-                'r2_score': float(ensemble_metrics['r2_score']),
-                'directional_accuracy': float(ensemble_directional)
+            # Define ensemble variants to test
+            ensemble_configs = {
+                'ensemble_voting_mse': {
+                    'method': 'voting',
+                    'kwargs': {},
+                    'description': 'Voting (MSE-optimized weights)'
+                },
+                'ensemble_voting_equal': {
+                    'method': 'voting',
+                    'kwargs': {'use_equal_weights': True},
+                    'description': 'Voting (Equal weights)'
+                },
+                'ensemble_voting_diverse': {
+                    'method': 'voting',
+                    'kwargs': {'min_weight': 0.05},
+                    'description': 'Voting (MSE + diversity constraints)'
+                },
+                'ensemble_stacking': {
+                    'method': 'stacking',
+                    'kwargs': {'meta_model': 'ridge'},
+                    'description': 'Stacking (Ridge meta-model)'
+                }
             }
+
+            # Test each ensemble variant
+            for ensemble_name, config in ensemble_configs.items():
+                print(f"\n{config['description']}:")
+                print("-" * 80)
+
+                try:
+                    # Create ensemble
+                    ensemble = EnsembleModel(
+                        {k: v for k, v in base_models.items()},  # Fresh copy for each
+                        method=config['method'],
+                        **config['kwargs']
+                    )
+                    ensemble.fit(self.X_train.values, self.y_train.values)
+
+                    # Evaluate
+                    ensemble_pred = ensemble.predict(self.X_test.values)
+                    ensemble_metrics = metrics_calc.calculate_ml_metrics(
+                        self.y_test.values,
+                        ensemble_pred,
+                        model_type='regression'
+                    )
+
+                    ensemble_directional = np.mean(
+                        np.sign(self.y_test.values) == np.sign(ensemble_pred)
+                    )
+
+                    print(f"  MSE:  {ensemble_metrics['mse']:.8f}")
+                    print(f"  RMSE: {ensemble_metrics['rmse']:.8f}")
+                    print(f"  MAE:  {ensemble_metrics['mae']:.8f}")
+                    print(f"  R²:   {ensemble_metrics['r2_score']:.6f}")
+                    print(f"  Directional Accuracy: {ensemble_directional:.2%}")
+
+                    # Store results
+                    self.results['models'][ensemble_name] = {
+                        'mse': float(ensemble_metrics['mse']),
+                        'rmse': float(ensemble_metrics['rmse']),
+                        'mae': float(ensemble_metrics['mae']),
+                        'r2_score': float(ensemble_metrics['r2_score']),
+                        'directional_accuracy': float(ensemble_directional)
+                    }
+
+                    # Add to models for backtesting
+                    self.models[ensemble_name] = ensemble
+
+                except Exception as e:
+                    print(f"  ✗ Failed: {str(e)}")
+                    self.logger.error(f"Ensemble {ensemble_name} failed: {e}")
 
     def _step6_backtest(self):
         """Step 6: Backtest trading strategies."""
