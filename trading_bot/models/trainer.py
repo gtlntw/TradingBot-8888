@@ -30,6 +30,7 @@ from tensorflow.keras.optimizers import Adam
 from trading_bot.utils.logger import LoggerMixin
 from trading_bot.utils.decorators import timing
 from trading_bot.utils.helpers import save_object, load_object, save_json
+from trading_bot.utils.sequences import create_sequences_with_validation
 from trading_bot.config.settings import Settings
 
 
@@ -302,7 +303,8 @@ class LSTMModel(BaseModel):
             'epochs': 100,
             'batch_size': 32,
             'learning_rate': 0.001,
-            'patience': 10
+            'patience': 10,
+            'sequence_length': 20  # Number of timesteps for sequence
         }
 
         if params:
@@ -323,11 +325,19 @@ class LSTMModel(BaseModel):
         np.random.seed(42)
         tf.random.set_seed(42)
 
-        # Reshape 2D input to 3D for LSTM (samples, timesteps=1, features)
+        # Create sequences for LSTM (samples, timesteps, features)
+        sequence_length = self.params.get('sequence_length', 20)
+
         if len(X.shape) == 2:
-            X = X.reshape(X.shape[0], 1, X.shape[1])
-            if X_val is not None:
-                X_val = X_val.reshape(X_val.shape[0], 1, X_val.shape[1])
+            # Convert 2D data to 3D sequences
+            X, y, X_val, y_val = create_sequences_with_validation(
+                X, y, X_val, y_val, sequence_length=sequence_length
+            )
+            self.logger.info(f"Created sequences: {X.shape[0]} sequences of length {sequence_length}")
+
+        # If already 3D, assume sequences are already created
+        elif len(X.shape) != 3:
+            raise ValueError(f"X must be 2D or 3D array, got shape {X.shape}")
 
         # Build model architecture
         self.model = Sequential([
@@ -385,9 +395,27 @@ class LSTMModel(BaseModel):
         if not self.is_fitted:
             raise ValueError("Model must be fitted before making predictions")
 
-        # Reshape 2D input to 3D for LSTM (samples, timesteps=1, features)
+        # Create sequences if 2D input
+        sequence_length = self.params.get('sequence_length', 20)
+
         if len(X.shape) == 2:
-            X = X.reshape(X.shape[0], 1, X.shape[1])
+            # For prediction, we need to handle sequences differently
+            # We'll create overlapping sequences and predict for each
+            if X.shape[0] < sequence_length:
+                # Not enough data for a full sequence - pad with zeros
+                padding = np.zeros((sequence_length - X.shape[0], X.shape[1]))
+                X_padded = np.vstack([padding, X])
+                X = X_padded.reshape(1, sequence_length, X.shape[1])
+            else:
+                # Create sequences for prediction
+                n_samples = X.shape[0]
+                n_features = X.shape[1]
+                n_sequences = n_samples - sequence_length + 1
+
+                X_seq = np.zeros((n_sequences, sequence_length, n_features))
+                for i in range(n_sequences):
+                    X_seq[i] = X[i:i + sequence_length]
+                X = X_seq
 
         predictions = self.model.predict(X, verbose=0)
 
@@ -459,7 +487,8 @@ class TransformerModel(BaseModel):
             'epochs': 100,
             'batch_size': 32,
             'learning_rate': 0.001,
-            'patience': 10
+            'patience': 10,
+            'sequence_length': 20  # Number of timesteps for sequence
         }
 
         if params:
@@ -499,11 +528,19 @@ class TransformerModel(BaseModel):
         np.random.seed(42)
         tf.random.set_seed(42)
 
-        # Reshape 2D input to 3D for Transformer (samples, timesteps=1, features)
+        # Create sequences for Transformer (samples, timesteps, features)
+        sequence_length = self.params.get('sequence_length', 20)
+
         if len(X.shape) == 2:
-            X = X.reshape(X.shape[0], 1, X.shape[1])
-            if X_val is not None:
-                X_val = X_val.reshape(X_val.shape[0], 1, X_val.shape[1])
+            # Convert 2D data to 3D sequences
+            X, y, X_val, y_val = create_sequences_with_validation(
+                X, y, X_val, y_val, sequence_length=sequence_length
+            )
+            self.logger.info(f"Created sequences: {X.shape[0]} sequences of length {sequence_length}")
+
+        # If already 3D, assume sequences are already created
+        elif len(X.shape) != 3:
+            raise ValueError(f"X must be 2D or 3D array, got shape {X.shape}")
 
         # Build model architecture
         inputs = Input(shape=(X.shape[1], X.shape[2]))
@@ -576,9 +613,27 @@ class TransformerModel(BaseModel):
         if not self.is_fitted:
             raise ValueError("Model must be fitted before making predictions")
 
-        # Reshape 2D input to 3D for Transformer (samples, timesteps=1, features)
+        # Create sequences if 2D input
+        sequence_length = self.params.get('sequence_length', 20)
+
         if len(X.shape) == 2:
-            X = X.reshape(X.shape[0], 1, X.shape[1])
+            # For prediction, we need to handle sequences differently
+            # We'll create overlapping sequences and predict for each
+            if X.shape[0] < sequence_length:
+                # Not enough data for a full sequence - pad with zeros
+                padding = np.zeros((sequence_length - X.shape[0], X.shape[1]))
+                X_padded = np.vstack([padding, X])
+                X = X_padded.reshape(1, sequence_length, X.shape[1])
+            else:
+                # Create sequences for prediction
+                n_samples = X.shape[0]
+                n_features = X.shape[1]
+                n_sequences = n_samples - sequence_length + 1
+
+                X_seq = np.zeros((n_sequences, sequence_length, n_features))
+                for i in range(n_sequences):
+                    X_seq[i] = X[i:i + sequence_length]
+                X = X_seq
 
         predictions = self.model.predict(X, verbose=0)
 
