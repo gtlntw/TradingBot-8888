@@ -236,40 +236,45 @@ class WalkForwardTester:
         X_test = test_data[feature_cols].values
         y_test = test_data[target_col].values
 
+        # Prepare price data for backtester
+        price_data = test_data[['open', 'high', 'low', 'close', 'volume']].copy()
+
         window_results = {}
 
         for name, model in models.items():
             try:
                 # Get predictions
-                if name == 'ensemble_sharpe':
-                    predictions = model.predict(X_test)
-                else:
-                    predictions = model.predict(X_test)
+                predictions = model.predict(X_test)
 
-                # Create signals
-                signals = np.sign(predictions)
+                # Generate signals: +1 for buy, -1 for sell, 0 for hold
+                signals = pd.Series(0, index=price_data.index)
+                signals[predictions > 0] = 1
+                signals[predictions < 0] = -1
 
-                # Backtest
-                test_df = test_data.copy()
-                test_df['signal'] = signals
-                test_df['actual_return'] = y_test
+                # Run backtest using proper Backtester class
+                backtester = Backtester(
+                    initial_capital=100000,
+                    commission=0.001,  # 0.1%
+                    slippage=0.001     # 0.1%
+                )
 
-                # Calculate returns
-                test_df['strategy_return'] = test_df['signal'] * test_df['actual_return']
+                backtest_results = backtester.run_backtest(
+                    data=price_data,
+                    signals=signals,
+                    strategy_name=f"{name}_wf{window_idx}",
+                    position_size=0.95
+                )
 
-                # Performance metrics
-                total_return = (1 + test_df['strategy_return']).prod() - 1
-                sharpe = (test_df['strategy_return'].mean() / test_df['strategy_return'].std()) * np.sqrt(252 / self.prediction_horizon)
-                win_rate = (test_df['strategy_return'] > 0).sum() / len(test_df)
+                metrics = backtest_results.get('metrics', {})
 
                 window_results[name] = {
-                    'total_return': total_return,
-                    'sharpe_ratio': sharpe,
-                    'win_rate': win_rate,
-                    'num_trades': len(test_df)
+                    'total_return': metrics.get('total_return', 0),
+                    'sharpe_ratio': metrics.get('sharpe_ratio', 0),
+                    'win_rate': metrics.get('win_rate', 0),
+                    'num_trades': metrics.get('total_trades', 0)
                 }
 
-                print(f"    ✓ {name}: {total_return*100:+.2f}%")
+                print(f"    ✓ {name}: {metrics.get('total_return', 0)*100:+.2f}%")
 
             except Exception as e:
                 print(f"    ✗ {name}: {str(e)}")
@@ -277,23 +282,24 @@ class WalkForwardTester:
 
         # Add buy-and-hold baseline
         try:
-            test_df = test_data.copy()
-            test_df['actual_return'] = y_test
+            first_price = price_data['close'].iloc[0]
+            last_price = price_data['close'].iloc[-1]
+            bh_return = (last_price / first_price) - 1
 
-            # Buy and hold: always hold (signal = 1)
-            test_df['strategy_return'] = test_df['actual_return']
-
-            total_return = (1 + test_df['strategy_return']).prod() - 1
-            sharpe = (test_df['strategy_return'].mean() / test_df['strategy_return'].std()) * np.sqrt(252 / self.prediction_horizon)
-            win_rate = (test_df['strategy_return'] > 0).sum() / len(test_df)
+            # Calculate Sharpe for buy-and-hold
+            daily_returns = price_data['close'].pct_change().dropna()
+            if len(daily_returns) > 0 and daily_returns.std() > 0:
+                bh_sharpe = (daily_returns.mean() / daily_returns.std()) * np.sqrt(252)
+            else:
+                bh_sharpe = 0
 
             window_results['buy_and_hold'] = {
-                'total_return': total_return,
-                'sharpe_ratio': sharpe,
-                'win_rate': win_rate,
-                'num_trades': 1  # One trade: buy and hold
+                'total_return': bh_return,
+                'sharpe_ratio': bh_sharpe,
+                'win_rate': (daily_returns > 0).sum() / len(daily_returns) if len(daily_returns) > 0 else 0,
+                'num_trades': 1
             }
-            print(f"    ✓ buy_and_hold: {total_return*100:+.2f}%")
+            print(f"    ✓ buy_and_hold: {bh_return*100:+.2f}%")
         except Exception as e:
             print(f"    ✗ buy_and_hold: {str(e)}")
 
