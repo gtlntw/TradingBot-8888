@@ -239,17 +239,15 @@ class VotingEnsemble(EnsembleMethod):
 
         def objective(weights):
             """Minimize negative Sharpe ratio (maximize Sharpe)."""
-            weights = weights / np.sum(weights)  # Normalize weights
+            # No need to normalize - constraint already enforces sum(weights) = 1
 
             # Ensemble predictions
             ensemble_pred = np.average(val_predictions, axis=1, weights=weights)
 
-            # Generate trading signals
-            signals = np.sign(ensemble_pred)
-
-            # Calculate strategy returns (assumes y_val are actual returns)
-            # Strategy return = signal * actual_return
-            strategy_returns = signals * y_val
+            # For optimization, use predictions directly as "soft" signals
+            # This preserves differentiability (np.sign() has zero gradient)
+            # The predictions are treated as confidence-weighted positions
+            strategy_returns = ensemble_pred * y_val
 
             # Calculate Sharpe ratio
             mean_return = np.mean(strategy_returns)
@@ -260,10 +258,7 @@ class VotingEnsemble(EnsembleMethod):
 
             sharpe = mean_return / std_return
 
-            # Add diversity bonus
-            diversity_bonus = np.std(weights) * 0.1
-
-            return -sharpe - diversity_bonus  # Minimize negative Sharpe
+            return -sharpe  # Minimize negative Sharpe (= maximize Sharpe)
 
         # Constraints: weights sum to 1
         constraints = {'type': 'eq', 'fun': lambda w: np.sum(w) - 1}
