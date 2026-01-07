@@ -509,6 +509,12 @@ class EnsembleModel(LoggerMixin):
         self.method = method
         self.ensemble = None
 
+        # Add BaseModel-compatible attributes
+        self.params = kwargs
+        self.model = None  # Will be the ensemble itself after fitting
+        self.feature_names = None
+        self.training_history = {}
+
         # Create ensemble based on method
         if method == 'voting':
             self.ensemble = VotingEnsemble(models, **kwargs)
