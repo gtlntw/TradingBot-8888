@@ -187,24 +187,21 @@ class WalkForwardTester:
         X_train = train_data[feature_cols].values
         y_train = train_data[target_col].values
 
-        # Train individual models
-        models = {}
-        algorithms = ['random_forest', 'xgboost', 'lightgbm', 'lstm', 'transformer']
-
-        for algo in algorithms:
-            try:
-                trainer = ModelTrainer(self.settings, model_types=[algo])
-                trained_models = trainer.train_models(
-                    X_train=X_train,
-                    y_train=y_train,
-                    X_val=None,
-                    y_val=None,
-                    feature_names=feature_cols
-                )
-                models[algo] = trained_models[algo]
-                print(f"    ✓ {algo}")
-            except Exception as e:
-                print(f"    ✗ {algo}: {str(e)}")
+        # Train all models
+        try:
+            trainer = ModelTrainer(self.settings)
+            models = trainer.train_models(
+                X_train=X_train,
+                y_train=y_train,
+                X_val=None,
+                y_val=None,
+                feature_names=feature_cols
+            )
+            for model_name in models:
+                print(f"    ✓ {model_name}")
+        except Exception as e:
+            print(f"    ✗ Training failed: {str(e)}")
+            models = {}
 
         # Train ensemble (only if we have at least 2 models)
         if len(models) >= 2:
