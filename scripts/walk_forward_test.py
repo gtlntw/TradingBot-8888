@@ -214,7 +214,8 @@ class WalkForwardTester:
                     models=base_models,  # Use base_models, not models
                     method='voting',
                     optimize_for_sharpe=True,
-                    validation_split=0.2
+                    validation_split=0.2,
+                    min_weight=0.10  # 10% minimum per model for diversification
                 )
                 ensemble.fit(X_train, y_train)
                 models['ensemble_sharpe'] = ensemble
