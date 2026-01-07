@@ -130,6 +130,15 @@ class VotingEnsemble(EnsembleMethod):
             pred = model.predict(X)
             predictions.append(pred)
 
+        # Handle sequence-based models (LSTM/Transformer) which return fewer predictions
+        # Align all predictions to the minimum length
+        pred_lengths = [len(p) for p in predictions]
+        min_length = min(pred_lengths)
+
+        if min_length < len(X):
+            # Align all predictions to minimum length by taking last N samples
+            predictions = [p[-min_length:] for p in predictions]
+
         predictions = np.array(predictions)
 
         # Weighted average
@@ -162,6 +171,18 @@ class VotingEnsemble(EnsembleMethod):
         for name in model_names:
             pred = self.models[name].predict(X)
             model_predictions.append(pred)
+
+        # Handle sequence-based models (LSTM/Transformer) which return fewer predictions
+        # Align all predictions to the minimum length
+        pred_lengths = [len(p) for p in model_predictions]
+        min_length = min(pred_lengths)
+
+        if min_length < len(X):
+            self.logger.info(f"Aligning predictions for MSE: {pred_lengths} -> {min_length} (sequence models detected)")
+            # Align all predictions to minimum length by taking last N samples
+            model_predictions = [p[-min_length:] for p in model_predictions]
+            # Also align y to match
+            y = y[-min_length:]
 
         model_predictions = np.array(model_predictions).T
 
@@ -235,7 +256,19 @@ class VotingEnsemble(EnsembleMethod):
             pred = self.models[name].predict(X_val)
             val_predictions.append(pred)
 
-        val_predictions = np.array(val_predictions).T  # Shape: (val_size, n_models)
+        # Handle sequence-based models (LSTM/Transformer) which return fewer predictions
+        # Align all predictions to the minimum length
+        pred_lengths = [len(p) for p in val_predictions]
+        min_length = min(pred_lengths)
+
+        if min_length < val_size:
+            self.logger.info(f"Aligning predictions: {pred_lengths} -> {min_length} (sequence models detected)")
+            # Align all predictions to minimum length by taking last N samples
+            val_predictions = [p[-min_length:] for p in val_predictions]
+            # Also align y_val to match
+            y_val = y_val[-min_length:]
+
+        val_predictions = np.array(val_predictions).T  # Shape: (min_length, n_models)
 
         def objective(weights):
             """Minimize negative Sharpe ratio (maximize Sharpe)."""
@@ -351,6 +384,15 @@ class StackingEnsemble(EnsembleMethod):
         for model in self.models.values():
             pred = model.predict(X)
             meta_features.append(pred)
+
+        # Handle sequence-based models (LSTM/Transformer) which return fewer predictions
+        # Align all predictions to the minimum length
+        pred_lengths = [len(p) for p in meta_features]
+        min_length = min(pred_lengths)
+
+        if min_length < len(X):
+            # Align all predictions to minimum length by taking last N samples
+            meta_features = [p[-min_length:] for p in meta_features]
 
         meta_features = np.column_stack(meta_features)
 
