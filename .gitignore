@@ -106,6 +106,7 @@ logs/*
 experiments/results/*/
 experiments/reports/*.csv
 experiments/reports/*.json
+experiments/walk_forward/
 !experiments/results/.gitkeep
 !experiments/reports/.gitkeep
 
