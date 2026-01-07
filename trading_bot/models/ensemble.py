@@ -519,6 +519,19 @@ class EnsembleModel(LoggerMixin):
         else:
             raise ValueError(f"Unknown ensemble method: {method}")
 
+    @property
+    def is_fitted(self) -> bool:
+        """Check if ensemble is fitted."""
+        return self.ensemble.is_fitted if self.ensemble else False
+
+    @property
+    def model_type(self) -> str:
+        """Get model type from base models."""
+        if self.models:
+            # All models should have same type (validated in ensemble)
+            return list(self.models.values())[0].model_type
+        return 'regression'
+
     @timing
     def fit(self, X: np.ndarray, y: np.ndarray) -> 'EnsembleModel':
         """

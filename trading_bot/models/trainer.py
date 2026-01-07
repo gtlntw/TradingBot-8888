@@ -263,13 +263,15 @@ class LightGBMModel(BaseModel):
 
         # Prepare evaluation set if validation data provided
         eval_set = None
+        callbacks = [lgb.log_evaluation(0)]
         if X_val is not None and y_val is not None:
             eval_set = [(X_val, y_val)]
+            callbacks.append(lgb.early_stopping(100))
 
         self.model.fit(
             X, y,
             eval_set=eval_set,
-            callbacks=[lgb.early_stopping(100), lgb.log_evaluation(0)]
+            callbacks=callbacks
         )
         self.is_fitted = True
 
