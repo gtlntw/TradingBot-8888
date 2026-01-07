@@ -203,11 +203,15 @@ class WalkForwardTester:
             print(f"    ✗ Training failed: {str(e)}")
             models = {}
 
-        # Train ensemble (only if we have at least 2 models)
-        if len(models) >= 2:
+        # Train ensemble (only if we have at least 2 base models)
+        # Important: Only use base models, not other ensembles (avoid circular reference)
+        base_models = {k: v for k, v in models.items()
+                      if not k.startswith('ensemble')}
+
+        if len(base_models) >= 2:
             try:
                 ensemble = EnsembleModel(
-                    models=models,
+                    models=base_models,  # Use base_models, not models
                     method='voting',
                     optimize_for_sharpe=True,
                     validation_split=0.2
