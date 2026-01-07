@@ -275,6 +275,28 @@ class WalkForwardTester:
                 print(f"    ✗ {name}: {str(e)}")
                 window_results[name] = None
 
+        # Add buy-and-hold baseline
+        try:
+            test_df = test_data.copy()
+            test_df['actual_return'] = y_test
+
+            # Buy and hold: always hold (signal = 1)
+            test_df['strategy_return'] = test_df['actual_return']
+
+            total_return = (1 + test_df['strategy_return']).prod() - 1
+            sharpe = (test_df['strategy_return'].mean() / test_df['strategy_return'].std()) * np.sqrt(252 / self.prediction_horizon)
+            win_rate = (test_df['strategy_return'] > 0).sum() / len(test_df)
+
+            window_results['buy_and_hold'] = {
+                'total_return': total_return,
+                'sharpe_ratio': sharpe,
+                'win_rate': win_rate,
+                'num_trades': 1  # One trade: buy and hold
+            }
+            print(f"    ✓ buy_and_hold: {total_return*100:+.2f}%")
+        except Exception as e:
+            print(f"    ✗ buy_and_hold: {str(e)}")
+
         return window_results
 
     async def run_walk_forward_test(
