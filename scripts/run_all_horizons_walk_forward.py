@@ -21,11 +21,52 @@ from datetime import datetime
 import pandas as pd
 
 
+def find_existing_result(horizon: int, max_age_hours: int = 24) -> dict:
+    """Find existing result file for a horizon if it exists and is recent."""
+    output_dir = Path('experiments/walk_forward')
+    if not output_dir.exists():
+        return None
+
+    pattern = f'walk_forward_{horizon}day_*.json'
+    files = sorted(output_dir.glob(pattern), key=lambda x: x.stat().st_mtime, reverse=True)
+
+    if not files:
+        return None
+
+    # Check if most recent file is fresh enough
+    latest_file = files[0]
+    file_age_hours = (datetime.now().timestamp() - latest_file.stat().st_mtime) / 3600
+
+    if file_age_hours > max_age_hours:
+        return None
+
+    try:
+        with open(latest_file, 'r') as f:
+            result = json.load(f)
+
+        # Validate it has the expected structure
+        if 'aggregated' in result and 'windows' in result:
+            print(f"  Found existing result: {latest_file.name} ({file_age_hours:.1f}h old)")
+            return result
+    except Exception as e:
+        print(f"  Warning: Could not load {latest_file.name}: {e}")
+        return None
+
+    return None
+
+
 def run_walk_forward(horizon: int, args: argparse.Namespace) -> dict:
     """Run walk-forward test for a single horizon."""
     print(f"\n{'='*80}")
     print(f"RUNNING WALK-FORWARD TEST: {horizon}-DAY HORIZON")
     print(f"{'='*80}\n")
+
+    # Check for existing result if resume mode
+    if args.resume and not args.force:
+        existing = find_existing_result(horizon, max_age_hours=args.max_age)
+        if existing:
+            print(f"✓ Resuming: Using existing result for {horizon}-day horizon\n")
+            return existing
 
     cmd = [
         'python', 'scripts/walk_forward_test.py',
@@ -140,6 +181,12 @@ def main():
                        help='Quick test with smaller dataset')
     parser.add_argument('--horizons', type=int, nargs='+', default=[1, 7, 14, 28, 60],
                        help='Horizons to test (default: 1 7 14 28 60)')
+    parser.add_argument('--resume', action='store_true',
+                       help='Resume from existing results (skip already-completed horizons)')
+    parser.add_argument('--force', action='store_true',
+                       help='Force re-run even if results exist (overrides --resume)')
+    parser.add_argument('--max-age', type=int, default=24,
+                       help='Maximum age of existing results in hours for resume (default: 24)')
 
     args = parser.parse_args()
 
@@ -159,6 +206,10 @@ def main():
     print(f"Train Window: {args.train_window} days")
     print(f"Test Window: {args.test_window} days")
     print(f"Step Size: {args.step_size} days")
+    if args.resume:
+        print(f"Resume: Enabled (max age: {args.max_age}h)")
+    if args.force:
+        print(f"Force: Re-run all horizons")
     print(f"{'='*80}\n")
 
     # Run walk-forward for each horizon
