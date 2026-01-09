@@ -21,6 +21,7 @@ from datetime import datetime
 from typing import Dict, List, Any, Optional
 import pandas as pd
 import numpy as np
+from sklearn.preprocessing import StandardScaler
 
 # Add project root to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -115,8 +116,15 @@ class WalkForwardTester:
 
         # Feature engineering
         features_df = self.feature_engineer.create_features(cleaned_data)
-        features_df = features_df.dropna()
-        print(f"✓ Features: {len(features_df.columns)} features, {len(features_df)} records")
+
+        # Handle missing values with forward fill (better than dropna)
+        rows_before = len(features_df)
+        features_df = features_df.fillna(method='ffill')  # Forward fill
+        features_df = features_df.fillna(method='bfill')  # Backward fill for remaining
+        features_df = features_df.dropna()  # Drop only truly unfillable rows
+        rows_after = len(features_df)
+
+        print(f"✓ Features: {len(features_df.columns)} features, {rows_after} records (recovered {rows_before - rows_after} from NaN)")
 
         # Add target
         target_col = f'future_return_{self.prediction_horizon}d'
@@ -176,8 +184,8 @@ class WalkForwardTester:
         train_data: pd.DataFrame,
         target_col: str,
         window_idx: int
-    ) -> Dict[str, Any]:
-        """Train models on a specific window."""
+    ) -> tuple[Dict[str, Any], StandardScaler]:
+        """Train models on a specific window with feature scaling."""
         print(f"\n  Training models on {len(train_data)} samples...")
 
         # Prepare features and target
@@ -187,11 +195,16 @@ class WalkForwardTester:
         X_train = train_data[feature_cols].values
         y_train = train_data[target_col].values
 
-        # Train all models
+        # Feature Scaling (CRITICAL for LSTM/Transformer!)
+        scaler = StandardScaler()
+        X_train_scaled = scaler.fit_transform(X_train)
+        print(f"    ✓ Feature scaling: normalized {len(feature_cols)} features")
+
+        # Train all models with scaled features
         try:
             trainer = ModelTrainer(self.settings)
             models = trainer.train_models(
-                X_train=X_train,
+                X_train=X_train_scaled,  # Use scaled features
                 y_train=y_train,
                 X_val=None,
                 y_val=None,
@@ -217,28 +230,33 @@ class WalkForwardTester:
                     validation_split=0.2,
                     min_weight=0.10  # 10% minimum per model for diversification
                 )
-                ensemble.fit(X_train, y_train)
+                ensemble.fit(X_train_scaled, y_train)  # Use scaled features
                 models['ensemble_sharpe'] = ensemble
                 print(f"    ✓ ensemble_sharpe")
             except Exception as e:
                 print(f"    ✗ ensemble_sharpe: {str(e)}")
 
-        return models
+        return models, scaler
 
     def test_models_for_window(
         self,
         models: Dict[str, Any],
         test_data: pd.DataFrame,
         target_col: str,
-        window_idx: int
+        window_idx: int,
+        scaler: StandardScaler
     ) -> Dict[str, Any]:
-        """Test models on a specific window."""
+        """Test models on a specific window with feature scaling."""
         print(f"\n  Testing models on {len(test_data)} samples...")
 
         feature_cols = [col for col in test_data.columns
                        if col not in ['close', 'open', 'high', 'low', 'volume', 'ticker', target_col]]
 
         X_test = test_data[feature_cols].values
+
+        # Apply same scaling as training (CRITICAL - use transform, not fit_transform!)
+        X_test_scaled = scaler.transform(X_test)
+
         y_test = test_data[target_col].values
 
         # Prepare price data for backtester
@@ -248,8 +266,8 @@ class WalkForwardTester:
 
         for name, model in models.items():
             try:
-                # Get predictions
-                predictions = model.predict(X_test)
+                # Get predictions (using scaled features)
+                predictions = model.predict(X_test_scaled)
 
                 # Generate signals: +1 for buy, -1 for sell, 0 for hold
                 signals = pd.Series(0, index=price_data.index)
@@ -352,11 +370,11 @@ class WalkForwardTester:
             train_data = prepared_data.iloc[window['train_start']:window['train_end']]
             test_data = prepared_data.iloc[window['test_start']:window['test_end']]
 
-            # Train models
-            models = self.train_models_for_window(train_data, target_col, i)
+            # Train models (returns models and scaler)
+            models, scaler = self.train_models_for_window(train_data, target_col, i)
 
-            # Test models
-            results = self.test_models_for_window(models, test_data, target_col, i)
+            # Test models (using the same scaler from training)
+            results = self.test_models_for_window(models, test_data, target_col, i, scaler)
 
             all_results.append({
                 'window': i,
