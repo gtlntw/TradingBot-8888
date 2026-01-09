@@ -251,17 +251,8 @@ class WalkForwardTester:
                 # Get predictions
                 predictions = model.predict(X_test)
 
-                # Handle sequence-based models (LSTM, Transformer) which return fewer predictions
-                # Align predictions with price data by using the last N rows
-                if len(predictions) < len(price_data):
-                    # Models like LSTM/Transformer create sequences, so predictions correspond
-                    # to the last len(predictions) samples
-                    aligned_price_data = price_data.iloc[-len(predictions):].copy()
-                else:
-                    aligned_price_data = price_data.copy()
-
                 # Generate signals: +1 for buy, -1 for sell, 0 for hold
-                signals = pd.Series(0, index=aligned_price_data.index)
+                signals = pd.Series(0, index=price_data.index)
                 signals[predictions > 0] = 1
                 signals[predictions < 0] = -1
 
@@ -273,7 +264,7 @@ class WalkForwardTester:
                 )
 
                 backtest_results = backtester.run_backtest(
-                    data=aligned_price_data,
+                    data=price_data,
                     signals=signals,
                     strategy_name=f"{name}_wf{window_idx}",
                     position_size=0.95
