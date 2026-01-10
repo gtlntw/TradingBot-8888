@@ -17,7 +17,10 @@ from trading_bot.config.settings import Settings
 from trading_bot.data.collector import DataCollector
 from trading_bot.data.preprocessor import DataPreprocessor
 from trading_bot.data.features import FeatureEngineer
+from trading_bot.data.feature_selection import FeatureSelector
+from trading_bot.data.sequences import SequenceGenerator
 from trading_bot.models.trainer import ModelTrainer
+from trading_bot.models.sequence_models import SequenceLSTMModel, SequenceTransformerModel
 from trading_bot.models.ensemble import EnsembleModel
 from trading_bot.evaluation.backtester import Backtester
 from trading_bot.evaluation.metrics import PerformanceMetrics
@@ -190,6 +193,78 @@ def preprocess(ctx, input, output, clean, features):
         click.echo(f"Error: {e}")
 
 
+@data.command()
+@click.option('--data', '-d', required=True, help='Input data file (processed with features)')
+@click.option('--target', '-t', default='profitable_trade', help='Target column name')
+@click.option('--output', '-o', default='data/features', help='Output directory')
+@click.option('--correlation-threshold', default=0.95, help='Correlation threshold for removal')
+@click.option('--max-features', default=30, help='Maximum number of features to select')
+@click.option('--transaction-cost', default=0.002, help='Transaction cost for target (default 0.2%)')
+@click.pass_context
+def select_features(ctx, data, target, output, correlation_threshold, max_features, transaction_cost):
+    """Perform feature selection on processed data."""
+    settings = ctx.obj['settings']
+    logger = ctx.obj['logger']
+
+    try:
+        # Load data
+        df = pd.read_csv(data, index_col=0, parse_dates=True)
+        click.echo(f"Loaded data: {df.shape}")
+
+        # Create target if it doesn't exist
+        if target not in df.columns:
+            future_return = df['close'].shift(-1) / df['close'] - 1
+            df[target] = (future_return > transaction_cost).astype(float)
+            df = df.dropna()
+            click.echo(f"Created binary profitability target: {target}")
+
+        # Prepare features and target
+        feature_cols = [col for col in df.columns if col != target and not col.startswith('close')]
+        X = df[feature_cols].fillna(0)
+        y = df[target].values
+
+        click.echo(f"Starting with {len(feature_cols)} features")
+
+        # Initialize feature selector
+        selector = FeatureSelector(
+            correlation_threshold=correlation_threshold,
+            importance_threshold=0.001,
+            max_features=max_features
+        )
+
+        # Perform feature selection
+        X_selected, selected_features = selector.select_features(
+            X, y, feature_cols, model_type='classification'
+        )
+
+        # Save results
+        output_path = Path(output)
+        output_path.mkdir(parents=True, exist_ok=True)
+
+        # Save selected data
+        df_selected = df[[*selected_features, target]]
+        output_file = output_path / 'selected_features.csv'
+        df_selected.to_csv(output_file)
+        click.echo(f"\nSaved selected features to {output_file}")
+
+        # Save feature selection results
+        selector.save_results(output_path)
+
+        # Print summary
+        click.echo(f"\nFeature Selection Summary:")
+        click.echo(f"  Original features: {len(feature_cols)}")
+        click.echo(f"  Selected features: {len(selected_features)}")
+        click.echo(f"  Reduction: {(1 - len(selected_features)/len(feature_cols))*100:.1f}%")
+        click.echo(f"\nTop 10 selected features:")
+        for i, feat in enumerate(selected_features[:10], 1):
+            importance = selector.feature_importance.get(feat, 0)
+            click.echo(f"  {i}. {feat}: {importance:.4f}")
+
+    except Exception as e:
+        logger.error(f"Error in feature selection: {e}")
+        click.echo(f"Error: {e}")
+
+
 @cli.group()
 def model():
     """Model training and evaluation commands."""
@@ -198,12 +273,13 @@ def model():
 
 @model.command()
 @click.option('--data', '-d', required=True, help='Training data file')
-@click.option('--target', '-t', default='future_return', help='Target column name')
+@click.option('--target', '-t', default='profitable_trade', help='Target column name')
 @click.option('--algorithms', '-a', multiple=True, help='Algorithms to train')
 @click.option('--test-size', default=0.2, help='Test set size')
 @click.option('--output', '-o', default='data/models', help='Output directory')
+@click.option('--transaction-cost', default=0.002, help='Transaction cost threshold (default 0.2%)')
 @click.pass_context
-def train(ctx, data, target, algorithms, test_size, output):
+def train(ctx, data, target, algorithms, test_size, output, transaction_cost):
     """Train ML models on market data."""
     settings = ctx.obj['settings']
     logger = ctx.obj['logger']
@@ -213,6 +289,7 @@ def train(ctx, data, target, algorithms, test_size, output):
 
     click.echo(f"Training models: {list(algorithms)}")
     click.echo(f"Data: {data}, Target: {target}")
+    click.echo(f"Transaction cost threshold: {transaction_cost*100:.2f}%")
 
     try:
         # Load data
@@ -221,10 +298,13 @@ def train(ctx, data, target, algorithms, test_size, output):
 
         # Create target if it doesn't exist
         if target not in df.columns:
-            # Create future return target
-            df[target] = df['close'].shift(-1) / df['close'] - 1
+            # Create profitability target (binary: 1 if future return > transaction cost, 0 otherwise)
+            future_return = df['close'].shift(-1) / df['close'] - 1
+            df[target] = (future_return > transaction_cost).astype(float)
             df = df.dropna()
-            click.echo(f"Created target column: {target}")
+            click.echo(f"Created binary profitability target: {target}")
+            click.echo(f"  Profitable trades: {df[target].sum():.0f} ({df[target].mean()*100:.1f}%)")
+            click.echo(f"  Unprofitable trades: {(1-df[target]).sum():.0f} ({(1-df[target]).mean()*100:.1f}%)")
 
         # Prepare features and target
         feature_cols = [col for col in df.columns if col != target and not col.startswith('close')]
@@ -238,14 +318,15 @@ def train(ctx, data, target, algorithms, test_size, output):
 
         click.echo(f"Train: {len(X_train)}, Test: {len(X_test)}")
 
-        # Train models
+        # Train models with classification
         trainer = ModelTrainer(settings)
         models = trainer.train_models(
             X_train=X_train.values,
             y_train=y_train.values,
             X_val=X_test.values,
             y_val=y_test.values,
-            feature_names=feature_cols
+            feature_names=feature_cols,
+            model_type='classification'
         )
 
         # Save models
@@ -256,11 +337,163 @@ def train(ctx, data, target, algorithms, test_size, output):
         click.echo("\nTraining Results:")
         for name, model in models.items():
             predictions = model.predict(X_test.values)
-            mse = np.mean((predictions - y_test.values) ** 2)
-            click.echo(f"  {name}: MSE = {mse:.6f}")
+            accuracy = np.mean(predictions == y_test.values)
+            # For probabilistic models, also show probability-based metrics
+            if hasattr(model, 'predict_proba'):
+                proba = model.predict_proba(X_test.values)
+                # Binary classification: probability of class 1 (profitable)
+                if len(proba.shape) > 1 and proba.shape[1] == 2:
+                    proba_profitable = proba[:, 1]
+                    click.echo(f"  {name}: Accuracy = {accuracy:.4f}, Mean P(profitable) = {proba_profitable.mean():.4f}")
+                else:
+                    click.echo(f"  {name}: Accuracy = {accuracy:.4f}")
+            else:
+                click.echo(f"  {name}: Accuracy = {accuracy:.4f}")
 
     except Exception as e:
         logger.error(f"Error training models: {e}")
+        click.echo(f"Error: {e}")
+
+
+@model.command()
+@click.option('--data', '-d', required=True, help='Training data file (with OHLCV)')
+@click.option('--models', '-m', multiple=True, default=['lstm', 'transformer'], help='Models to train (lstm, transformer)')
+@click.option('--sequence-length', default=60, help='Sequence length (lookback window)')
+@click.option('--test-size', default=0.2, help='Test set size')
+@click.option('--output', '-o', default='data/models/sequences', help='Output directory')
+@click.option('--transaction-cost', default=0.002, help='Transaction cost threshold')
+@click.pass_context
+def train_sequences(ctx, data, models, sequence_length, test_size, output, transaction_cost):
+    """Train sequence-based models (LSTM, Transformer) with 60-day lookback."""
+    settings = ctx.obj['settings']
+    logger = ctx.obj['logger']
+
+    click.echo(f"Training sequence models: {list(models)}")
+    click.echo(f"Sequence length: {sequence_length} days")
+    click.echo(f"Transaction cost: {transaction_cost*100:.2f}%")
+
+    try:
+        # Load data
+        df = pd.read_csv(data, index_col=0, parse_dates=True)
+        click.echo(f"Loaded data: {df.shape}")
+
+        # Create sequence generator
+        seq_gen = SequenceGenerator(
+            sequence_length=sequence_length,
+            target_horizon=1
+        )
+
+        # Create target
+        df = seq_gen.create_target_from_returns(
+            df,
+            close_col='close',
+            transaction_cost=transaction_cost,
+            target_name='profitable_trade'
+        )
+
+        # Create sequences from raw OHLCV data
+        click.echo("\nCreating sequences from OHLCV data...")
+        X_sequences, y = seq_gen.create_raw_ohlcv_sequences(
+            df,
+            target_column='profitable_trade'
+        )
+
+        click.echo(f"Sequences shape: {X_sequences.shape}")
+        click.echo(f"Target shape: {y.shape}")
+
+        # Split data (time-series aware)
+        X_train, X_test, y_train, y_test = seq_gen.split_sequences(
+            X_sequences, y, test_size=test_size
+        )
+
+        # Normalize sequences
+        X_train_norm, X_test_norm, norm_params = seq_gen.normalize_sequences(
+            X_train, X_test, method='minmax'
+        )
+
+        click.echo(f"\nTrain: {len(X_train_norm)}, Test: {len(X_test_norm)}")
+
+        # Train models
+        trained_models = {}
+        output_path = Path(output)
+        output_path.mkdir(parents=True, exist_ok=True)
+
+        for model_name in models:
+            click.echo(f"\nTraining {model_name.upper()} model...")
+
+            if model_name == 'lstm':
+                model = SequenceLSTMModel(
+                    model_type='classification',
+                    params={
+                        'units': 64,
+                        'layers': 2,
+                        'dropout': 0.3,
+                        'use_bidirectional': True,
+                        'use_attention': True,
+                        'epochs': 100,
+                        'batch_size': 32,
+                        'learning_rate': 0.001,
+                        'patience': 15
+                    }
+                )
+            elif model_name == 'transformer':
+                model = SequenceTransformerModel(
+                    model_type='classification',
+                    params={
+                        'num_heads': 4,
+                        'ff_dim': 64,
+                        'num_transformer_blocks': 3,
+                        'mlp_units': [128, 64],
+                        'dropout': 0.2,
+                        'epochs': 100,
+                        'batch_size': 32,
+                        'learning_rate': 0.0005,
+                        'patience': 15
+                    }
+                )
+            else:
+                click.echo(f"Unknown model: {model_name}")
+                continue
+
+            # Train model
+            model.fit(
+                X_train_norm,
+                y_train,
+                X_val=X_test_norm,
+                y_val=y_test,
+                feature_names=['open', 'high', 'low', 'close', 'volume']
+            )
+
+            # Evaluate on test set
+            predictions = model.predict(X_test_norm)
+            accuracy = np.mean(predictions == y_test)
+            proba = model.predict_proba(X_test_norm)
+            proba_profitable = proba[:, 1]
+
+            click.echo(f"\nTest Results for {model_name.upper()}:")
+            click.echo(f"  Accuracy: {accuracy:.4f}")
+            click.echo(f"  Mean P(profitable): {proba_profitable.mean():.4f}")
+
+            # Save model
+            timestamp = generate_timestamp()
+            model_file = output_path / f"{model_name}_seq{sequence_length}_{timestamp}"
+            model.save(model_file)
+            click.echo(f"  Saved to: {model_file}")
+
+            trained_models[model_name] = model
+
+        # Save normalization parameters
+        import joblib
+        norm_file = output_path / f'normalization_params_{generate_timestamp()}.pkl'
+        joblib.dump(norm_params, norm_file)
+        click.echo(f"\nSaved normalization parameters to {norm_file}")
+
+        click.echo(f"\nSequence model training complete! Trained {len(trained_models)} models.")
+
+    except Exception as e:
+        logger.error(f"Error training sequence models: {e}")
+        import traceback
+        traceback.print_exc()
         click.echo(f"Error: {e}")
 
 
@@ -270,8 +503,9 @@ def train(ctx, data, target, algorithms, test_size, output):
 @click.option('--timestamp', '-t', help='Model timestamp to load')
 @click.option('--ensemble', is_flag=True, help='Create ensemble model')
 @click.option('--output', '-o', default='reports', help='Output directory')
+@click.option('--transaction-cost', default=0.002, help='Transaction cost threshold (default 0.2%)')
 @click.pass_context
-def evaluate(ctx, data, models, timestamp, ensemble, output):
+def evaluate(ctx, data, models, timestamp, ensemble, output, transaction_cost):
     """Evaluate trained models."""
     settings = ctx.obj['settings']
     logger = ctx.obj['logger']
@@ -300,10 +534,11 @@ def evaluate(ctx, data, models, timestamp, ensemble, output):
 
         click.echo(f"Loaded {len(loaded_models)} models")
 
-        # Prepare data
-        target_col = 'future_return'
+        # Prepare data with profitability target
+        target_col = 'profitable_trade'
         if target_col not in df.columns:
-            df[target_col] = df['close'].shift(-1) / df['close'] - 1
+            future_return = df['close'].shift(-1) / df['close'] - 1
+            df[target_col] = (future_return > transaction_cost).astype(float)
             df = df.dropna()
 
         feature_cols = [col for col in df.columns if col != target_col and not col.startswith('close')]
@@ -312,16 +547,20 @@ def evaluate(ctx, data, models, timestamp, ensemble, output):
 
         # Evaluate individual models
         click.echo("\nModel Evaluation:")
+        click.echo(f"Transaction cost threshold: {transaction_cost*100:.2f}%")
+        click.echo(f"Baseline (always predict profitable): {y.mean()*100:.1f}% accuracy")
         metrics_calc = PerformanceMetrics()
 
         for name, model in loaded_models.items():
             predictions = model.predict(X)
-            metrics = metrics_calc.calculate_ml_metrics(y, predictions, model_type='regression')
+            metrics = metrics_calc.calculate_ml_metrics(y, predictions, model_type='classification')
 
             click.echo(f"\n{name}:")
-            click.echo(f"  MSE: {metrics['mse']:.6f}")
-            click.echo(f"  MAE: {metrics['mae']:.6f}")
-            click.echo(f"  R²: {metrics['r2_score']:.4f}")
+            click.echo(f"  Accuracy: {metrics['accuracy']:.4f}")
+            click.echo(f"  Precision: {metrics['precision']:.4f}")
+            click.echo(f"  Recall: {metrics['recall']:.4f}")
+            if 'f1_score' in metrics:
+                click.echo(f"  F1 Score: {metrics['f1_score']:.4f}")
 
         # Create ensemble if requested
         if ensemble and len(loaded_models) > 1:
@@ -330,12 +569,14 @@ def evaluate(ctx, data, models, timestamp, ensemble, output):
             ensemble_model.fit(X, y)
 
             ensemble_pred = ensemble_model.predict(X)
-            ensemble_metrics = metrics_calc.calculate_ml_metrics(y, ensemble_pred, model_type='regression')
+            ensemble_metrics = metrics_calc.calculate_ml_metrics(y, ensemble_pred, model_type='classification')
 
             click.echo(f"\nEnsemble Model:")
-            click.echo(f"  MSE: {ensemble_metrics['mse']:.6f}")
-            click.echo(f"  MAE: {ensemble_metrics['mae']:.6f}")
-            click.echo(f"  R²: {ensemble_metrics['r2_score']:.4f}")
+            click.echo(f"  Accuracy: {ensemble_metrics['accuracy']:.4f}")
+            click.echo(f"  Precision: {ensemble_metrics['precision']:.4f}")
+            click.echo(f"  Recall: {ensemble_metrics['recall']:.4f}")
+            if 'f1_score' in ensemble_metrics:
+                click.echo(f"  F1 Score: {ensemble_metrics['f1_score']:.4f}")
 
     except Exception as e:
         logger.error(f"Error evaluating models: {e}")
