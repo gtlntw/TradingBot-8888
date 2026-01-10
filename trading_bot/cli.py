@@ -19,12 +19,15 @@ from trading_bot.data.preprocessor import DataPreprocessor
 from trading_bot.data.features import FeatureEngineer
 from trading_bot.data.feature_selection import FeatureSelector
 from trading_bot.data.sequences import SequenceGenerator
+from trading_bot.data.quality_checks import DataQualityChecker
 from trading_bot.models.trainer import ModelTrainer
 from trading_bot.models.sequence_models import SequenceLSTMModel, SequenceTransformerModel
 from trading_bot.models.ensemble import EnsembleModel
 from trading_bot.evaluation.backtester import Backtester
 from trading_bot.evaluation.metrics import PerformanceMetrics
 from trading_bot.evaluation.reporter import ReportGenerator
+from trading_bot.evaluation.standardized_eval import StandardizedEvaluator
+from trading_bot.evaluation.cost_sensitivity import CostSensitivityAnalyzer
 from trading_bot.trading.engine import TradingEngine, TradingMode
 from trading_bot.trading.signals import SignalGenerator
 from trading_bot.utils.logger import get_logger, setup_logging
@@ -83,19 +86,23 @@ def data():
 
 @data.command()
 @click.option('--symbols', '-s', multiple=True, help='Symbols to collect (e.g., BTC-USD)')
-@click.option('--days', '-d', default=365, help='Number of days to collect')
+@click.option('--days', '-d', default=3650, help='Number of days to collect (default: 3650 = 10 years)')
 @click.option('--interval', '-i', default='1d', help='Data interval (1h, 4h, 1d)')
 @click.option('--sources', multiple=True, help='Data sources (binance, yfinance, coingecko)')
 @click.option('--output', '-o', default='data/raw', help='Output directory')
 @click.pass_context
 def collect(ctx, symbols, days, interval, sources, output):
-    """Collect historical market data."""
+    """Collect historical market data (default: 10 years for standardized evaluation)."""
     settings = ctx.obj['settings']
     logger = ctx.obj['logger']
 
     # Use config defaults if not specified
     symbols = symbols or settings.symbols
     sources = sources or settings.data_sources
+
+    # Warn if less than recommended amount
+    if days < 3650:
+        click.echo(f"⚠️  WARNING: Collecting {days} days. Recommended: 3650 days (10 years) for standardized evaluation.")
 
     click.echo(f"Collecting data for symbols: {list(symbols)}")
     click.echo(f"Sources: {list(sources)}, Interval: {interval}, Days: {days}")
@@ -262,6 +269,63 @@ def select_features(ctx, data, target, output, correlation_threshold, max_featur
 
     except Exception as e:
         logger.error(f"Error in feature selection: {e}")
+        click.echo(f"Error: {e}")
+
+
+@data.command()
+@click.option('--data', '-d', required=True, help='Data file to check')
+@click.option('--output', '-o', default='data/quality_reports', help='Output directory')
+@click.option('--interval', default='1D', help='Expected data interval (1D, 1H, etc.)')
+@click.pass_context
+def check_quality(ctx, data, output, interval):
+    """Run comprehensive data quality checks."""
+    settings = ctx.obj['settings']
+    logger = ctx.obj['logger']
+
+    try:
+        # Load data
+        df = pd.read_csv(data, index_col=0, parse_dates=True)
+        click.echo(f"Loaded data: {df.shape}")
+        click.echo(f"Date range: {df.index[0]} to {df.index[-1]}")
+
+        # Initialize quality checker
+        checker = DataQualityChecker(
+            flash_crash_threshold=0.10,  # 10% move
+            gap_threshold_hours=48,  # 2 days
+            outlier_std_threshold=5.0,  # 5 std devs
+            volume_spike_threshold=10.0  # 10x normal volume
+        )
+
+        # Run all checks
+        click.echo("\nRunning quality checks...")
+        issues = checker.run_all_checks(df, expected_interval=interval)
+
+        # Print summary
+        summary = checker.get_summary()
+        click.echo(f"\nQuality Check Summary:")
+        click.echo(f"  Flash crashes/spikes: {summary['flash_crashes']}")
+        click.echo(f"  Data gaps: {summary['data_gaps']}")
+        click.echo(f"  Extreme outliers: {summary['extreme_outliers']}")
+        click.echo(f"  Volume anomalies: {summary['volume_anomalies']}")
+        click.echo(f"  Total issues: {summary['total_issues']}")
+
+        # Save report
+        output_path = Path(output)
+        output_path.mkdir(parents=True, exist_ok=True)
+        report_file = output_path / f'quality_report_{generate_timestamp()}.json'
+        checker.save_report(report_file)
+
+        click.echo(f"\nSaved quality report to {report_file}")
+
+        if summary['total_issues'] > 0:
+            click.echo("\n⚠️  Issues detected! Review the report for details.")
+        else:
+            click.echo("\n✓ No major quality issues detected!")
+
+    except Exception as e:
+        logger.error(f"Error checking data quality: {e}")
+        import traceback
+        traceback.print_exc()
         click.echo(f"Error: {e}")
 
 
@@ -580,6 +644,79 @@ def evaluate(ctx, data, models, timestamp, ensemble, output, transaction_cost):
 
     except Exception as e:
         logger.error(f"Error evaluating models: {e}")
+        click.echo(f"Error: {e}")
+
+
+@model.command()
+@click.option('--data', '-d', required=True, help='Test data file with predictions')
+@click.option('--output', '-o', default='reports/cost_sensitivity', help='Output directory')
+@click.option('--cost-levels', '-c', multiple=True, type=float, help='Cost levels to test (e.g., 0.001 0.002 0.005)')
+@click.pass_context
+def cost_sensitivity(ctx, data, output, cost_levels):
+    """Analyze model sensitivity to transaction costs."""
+    settings = ctx.obj['settings']
+    logger = ctx.obj['logger']
+
+    try:
+        # Default cost levels if not specified
+        if not cost_levels:
+            cost_levels = [0.0005, 0.001, 0.002, 0.005, 0.01]  # 0.05% to 1%
+
+        cost_levels = sorted(cost_levels)
+
+        click.echo(f"Testing transaction costs: {[f'{c*100:.2f}%' for c in cost_levels]}")
+
+        # Load data
+        df = pd.read_csv(data, index_col=0, parse_dates=True)
+        click.echo(f"Loaded data: {df.shape}")
+
+        # This command expects data with model predictions already included
+        # Format: columns should include predictions for each model (e.g., 'pred_xgboost', 'pred_lstm')
+        # and actual returns ('returns')
+
+        if 'returns' not in df.columns:
+            # Calculate returns if not present
+            df['returns'] = df['close'].pct_change()
+            df = df.dropna()
+
+        # Find prediction columns
+        pred_cols = [col for col in df.columns if col.startswith('pred_')]
+
+        if not pred_cols:
+            click.echo("Error: No prediction columns found. Expected columns like 'pred_xgboost', 'pred_lstm', etc.")
+            click.echo("Available columns: " + ', '.join(df.columns))
+            return
+
+        # Extract model predictions
+        model_signals = {}
+        for col in pred_cols:
+            model_name = col.replace('pred_', '')
+            model_signals[model_name] = df[col].values
+
+        returns = df['returns'].values
+
+        # Initialize analyzer
+        analyzer = CostSensitivityAnalyzer(cost_levels=list(cost_levels))
+
+        # Analyze all models
+        analyzer.analyze_multiple_models(model_signals, returns)
+
+        # Save results
+        output_path = Path(output)
+        summary_df = analyzer.save_results(output_path)
+
+        # Print summary
+        click.echo("\n" + "="*80)
+        click.echo("Cost Sensitivity Analysis Summary")
+        click.echo("="*80)
+        click.echo(summary_df.to_string(index=False))
+
+        click.echo(f"\nDetailed results saved to {output_path}")
+
+    except Exception as e:
+        logger.error(f"Error in cost sensitivity analysis: {e}")
+        import traceback
+        traceback.print_exc()
         click.echo(f"Error: {e}")
 
 
