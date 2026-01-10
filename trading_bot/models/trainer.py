@@ -263,13 +263,15 @@ class LightGBMModel(BaseModel):
 
         # Prepare evaluation set if validation data provided
         eval_set = None
+        callbacks = [lgb.log_evaluation(0)]
         if X_val is not None and y_val is not None:
             eval_set = [(X_val, y_val)]
+            callbacks.append(lgb.early_stopping(100))
 
         self.model.fit(
             X, y,
             eval_set=eval_set,
-            callbacks=[lgb.early_stopping(100), lgb.log_evaluation(0)]
+            callbacks=callbacks
         )
         self.is_fitted = True
 
@@ -317,11 +319,17 @@ class LSTMModel(BaseModel):
         self.logger.info(f"Training LSTM {self.model_type} model with {X.shape[0]} samples")
         start_time = datetime.now()
 
-        # Reshape 2D input to 3D for LSTM (samples, timesteps=1, features)
+        # Set random seeds for reproducibility
+        np.random.seed(42)
+        tf.random.set_seed(42)
+
+        # Reshape for LSTM (samples, timesteps, features)
         if len(X.shape) == 2:
             X = X.reshape(X.shape[0], 1, X.shape[1])
             if X_val is not None:
                 X_val = X_val.reshape(X_val.shape[0], 1, X_val.shape[1])
+        elif len(X.shape) != 3:
+            raise ValueError(f"X must be 2D or 3D array, got shape {X.shape}")
 
         # Build model architecture
         self.model = Sequential([
@@ -379,7 +387,6 @@ class LSTMModel(BaseModel):
         if not self.is_fitted:
             raise ValueError("Model must be fitted before making predictions")
 
-        # Reshape 2D input to 3D for LSTM (samples, timesteps=1, features)
         if len(X.shape) == 2:
             X = X.reshape(X.shape[0], 1, X.shape[1])
 
@@ -489,11 +496,17 @@ class TransformerModel(BaseModel):
         self.logger.info(f"Training Transformer {self.model_type} model with {X.shape[0]} samples")
         start_time = datetime.now()
 
-        # Reshape 2D input to 3D for Transformer (samples, timesteps=1, features)
+        # Set random seeds for reproducibility
+        np.random.seed(42)
+        tf.random.set_seed(42)
+
+        # Reshape for Transformer (samples, timesteps, features)
         if len(X.shape) == 2:
             X = X.reshape(X.shape[0], 1, X.shape[1])
             if X_val is not None:
                 X_val = X_val.reshape(X_val.shape[0], 1, X_val.shape[1])
+        elif len(X.shape) != 3:
+            raise ValueError(f"X must be 2D or 3D array, got shape {X.shape}")
 
         # Build model architecture
         inputs = Input(shape=(X.shape[1], X.shape[2]))
@@ -566,7 +579,6 @@ class TransformerModel(BaseModel):
         if not self.is_fitted:
             raise ValueError("Model must be fitted before making predictions")
 
-        # Reshape 2D input to 3D for Transformer (samples, timesteps=1, features)
         if len(X.shape) == 2:
             X = X.reshape(X.shape[0], 1, X.shape[1])
 
