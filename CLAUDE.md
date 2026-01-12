@@ -197,3 +197,32 @@ The `RiskManager` class provides comprehensive risk controls:
 - Comprehensive logging with rotation
 - Environment-specific configuration
 - API key management via environment variables
+
+---
+
+## Testing Scripts
+
+### Existing Test Scripts (`scripts/`)
+
+**`scripts/test_pipeline.py`** - Traditional pipeline testing (pre-2026 features)
+- Tests different prediction horizons (1, 7, 14, 28 days)
+- Full pipeline: data collection → preprocessing → feature engineering → training → evaluation → backtesting
+- Usage: `python scripts/test_pipeline.py --horizon 7 --days 730`
+
+**`scripts/walk_forward_test.py`** - Walk-forward validation
+- Tests model robustness with expanding/rolling windows
+- Usage: `python scripts/walk_forward_test.py`
+
+**`scripts/run_all_horizons_walk_forward.py`** - Comprehensive horizon testing
+- Combines horizon testing with walk-forward validation
+- Usage: `python scripts/run_all_horizons_walk_forward.py`
+
+### NEW Features Test Script
+
+**`scripts/test_new_features.py`** - Tests all 2026-01-12 enhancements
+- Feature selection (60+ → 30 features)
+- Sequence models (LSTM/Transformer with 60-day lookback)
+- Data quality validation
+- Cost sensitivity analysis
+- Standardized evaluation framework
+- Usage: `python scripts/test_new_features.py --days 730`

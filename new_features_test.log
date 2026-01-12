@@ -1,0 +1,4 @@
+Traceback (most recent call last):
+  File "/home/user/TradingBot-8888/scripts/test_new_features.py", line 20, in <module>
+    import pandas as pd
+ModuleNotFoundError: No module named 'pandas'
