@@ -268,7 +268,8 @@ class EnhancedWalkForwardTester:
                 y_train=y_train,
                 X_val=None,
                 y_val=None,
-                feature_names=selected_features
+                feature_names=selected_features,
+                model_type='classification'  # Binary classification for profitable_trade
             )
             models.update(traditional_models)
             for model_name in traditional_models:
@@ -392,11 +393,14 @@ class EnhancedWalkForwardTester:
                     aligned_prices = price_data
 
                 # NEW FEATURE #4: Standardized Evaluation - Calculate classification metrics
-                # Convert predictions to binary if they're probabilities
-                if len(predictions.shape) > 1 or (predictions.dtype == float and predictions.max() <= 1.0):
-                    pred_binary = (predictions.flatten() > 0.5).astype(int) if predictions.dtype == float else predictions.flatten()
+                # For classification models, predictions are already class labels (0 or 1)
+                # For sequence models in regression mode, convert probabilities to binary
+                if predictions.dtype == float and (predictions.min() >= 0 and predictions.max() <= 1):
+                    # Probabilities - threshold at 0.5
+                    pred_binary = (predictions.flatten() > 0.5).astype(int)
                 else:
-                    pred_binary = predictions.astype(int)
+                    # Already class labels
+                    pred_binary = predictions.flatten().astype(int)
 
                 metrics = {
                     'accuracy': accuracy_score(y_actual, pred_binary),
