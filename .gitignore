@@ -131,3 +131,6 @@ test_pipeline.py
 pipeline_test_output.txt
 new_features_test.log
 scripts/test_new_features.py
+walk_forward_pid.txt
+walk_forward_progress.txt
+walk_forward_run.log
