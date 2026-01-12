@@ -107,6 +107,7 @@ experiments/results/*/
 experiments/reports/*.csv
 experiments/reports/*.json
 experiments/walk_forward/
+experiments/walk_forward_enhanced/
 !experiments/results/.gitkeep
 !experiments/reports/.gitkeep
 
@@ -134,3 +135,6 @@ scripts/test_new_features.py
 walk_forward_pid.txt
 walk_forward_progress.txt
 walk_forward_run.log
+*.pid
+monitor_output.log
+walk_forward_experiment.log
