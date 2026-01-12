@@ -198,15 +198,8 @@ class EnhancedWalkForwardTester:
         X = features_df[feature_cols]
         y = features_df['profitable_trade']
 
-        selected_features = self.feature_selector.select_features(X, y)
-
-        # Handle different return types
-        if isinstance(selected_features, (list, tuple)):
-            selected_features = list(selected_features)
-        elif isinstance(selected_features, pd.Index):
-            selected_features = list(selected_features)
-        elif isinstance(selected_features, pd.DataFrame):
-            selected_features = list(selected_features.columns)
+        # select_features returns (DataFrame, List[str]) - we only need the list
+        _, selected_features = self.feature_selector.select_features(X, y)
 
         print(f"✓ Selected {len(selected_features)} features ({len(selected_features)/len(feature_cols)*100:.0f}% of {len(feature_cols)})")
 
