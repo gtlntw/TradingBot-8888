@@ -138,3 +138,7 @@ walk_forward_run.log
 *.pid
 monitor_output.log
 walk_forward_experiment.log
+monitor_*.sh
+monitor_*.log
+walk_forward_full.log
+test_1day.log
