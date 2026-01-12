@@ -1,6 +1,14 @@
 #!/usr/bin/env python3
 """
-Run walk-forward testing across all prediction horizons.
+Run ENHANCED walk-forward testing across all prediction horizons.
+
+NOW USES ALL NEW FEATURES (2026-01-12):
+- Feature Selection (60+ → 30 features)
+- 60-Day Sequence Models (LSTM/Transformer)
+- Data Quality Validation
+- Profitability Target (not raw returns)
+- Cost Sensitivity Analysis
+- Standardized Evaluation
 
 This script runs comprehensive walk-forward tests for all 5 horizons
 (1, 7, 14, 28, 60 days) and generates a comparison report.
@@ -9,6 +17,7 @@ Usage:
     python scripts/run_all_horizons_walk_forward.py
     python scripts/run_all_horizons_walk_forward.py --mode rolling
     python scripts/run_all_horizons_walk_forward.py --days 1095 --quick
+    python scripts/run_all_horizons_walk_forward.py --no-sequences  # Disable LSTM/Transformer for speed
 """
 
 import asyncio
@@ -23,11 +32,11 @@ import pandas as pd
 
 def find_existing_result(horizon: int, max_age_hours: int = 24) -> dict:
     """Find existing result file for a horizon if it exists and is recent."""
-    output_dir = Path('experiments/walk_forward')
+    output_dir = Path('experiments/walk_forward_enhanced')
     if not output_dir.exists():
         return None
 
-    pattern = f'walk_forward_{horizon}day_*.json'
+    pattern = f'enhanced_wf_{horizon}day_*.json'
     files = sorted(output_dir.glob(pattern), key=lambda x: x.stat().st_mtime, reverse=True)
 
     if not files:
@@ -69,14 +78,23 @@ def run_walk_forward(horizon: int, args: argparse.Namespace) -> dict:
             return existing
 
     cmd = [
-        'python', 'scripts/walk_forward_test.py',
+        'python', 'scripts/walk_forward_test_enhanced.py',
         '--horizon', str(horizon),
         '--days', str(args.days),
         '--mode', args.mode,
         '--train-window', str(args.train_window),
         '--test-window', str(args.test_window),
-        '--step-size', str(args.step_size)
+        '--step-size', str(args.step_size),
+        '--transaction-cost', str(args.transaction_cost),
+        '--max-features', str(args.max_features),
+        '--sequence-length', str(args.sequence_length)
     ]
+
+    # Add optional flags
+    if args.no_sequences:
+        cmd.append('--no-sequences')
+    if args.quick:
+        cmd.append('--quick')
 
     result = subprocess.run(cmd, capture_output=True, text=True)
 
@@ -86,8 +104,8 @@ def run_walk_forward(horizon: int, args: argparse.Namespace) -> dict:
         return None
 
     # Find the output file
-    output_dir = Path('experiments/walk_forward')
-    pattern = f'walk_forward_{horizon}day_*.json'
+    output_dir = Path('experiments/walk_forward_enhanced')
+    pattern = f'enhanced_wf_{horizon}day_*.json'
     files = sorted(output_dir.glob(pattern), key=lambda x: x.stat().st_mtime, reverse=True)
 
     if files:
@@ -187,6 +205,14 @@ def main():
                        help='Force re-run even if results exist (overrides --resume)')
     parser.add_argument('--max-age', type=int, default=24,
                        help='Maximum age of existing results in hours for resume (default: 24)')
+    parser.add_argument('--no-sequences', action='store_true',
+                       help='Disable sequence models (LSTM/Transformer) for faster execution')
+    parser.add_argument('--transaction-cost', type=float, default=0.002,
+                       help='Transaction cost threshold (default: 0.002 = 0.2%%)')
+    parser.add_argument('--max-features', type=int, default=30,
+                       help='Maximum features to select (default: 30)')
+    parser.add_argument('--sequence-length', type=int, default=60,
+                       help='Sequence lookback window for LSTM/Transformer (default: 60)')
 
     args = parser.parse_args()
 
@@ -198,18 +224,26 @@ def main():
         args.step_size = 60
 
     print(f"\n{'='*80}")
-    print(f"MULTI-HORIZON WALK-FORWARD TESTING")
+    print(f"ENHANCED MULTI-HORIZON WALK-FORWARD TESTING")
     print(f"{'='*80}")
-    print(f"Horizons: {args.horizons}")
-    print(f"Mode: {args.mode}")
-    print(f"Data: {args.days} days")
-    print(f"Train Window: {args.train_window} days")
-    print(f"Test Window: {args.test_window} days")
-    print(f"Step Size: {args.step_size} days")
+    print(f"🆕 NEW FEATURES ENABLED:")
+    print(f"  ✓ Feature Selection (max {args.max_features} features)")
+    print(f"  ✓ Profitability Target (cost={args.transaction_cost:.2%})")
+    print(f"  ✓ Sequence Models (lookback={args.sequence_length})" if not args.no_sequences else "  - Sequence Models: DISABLED")
+    print(f"  ✓ Data Quality Validation")
+    print(f"  ✓ Cost Sensitivity Analysis")
+    print(f"  ✓ Standardized Evaluation")
+    print(f"\nConfiguration:")
+    print(f"  Horizons: {args.horizons}")
+    print(f"  Mode: {args.mode}")
+    print(f"  Data: {args.days} days")
+    print(f"  Train Window: {args.train_window} days")
+    print(f"  Test Window: {args.test_window} days")
+    print(f"  Step Size: {args.step_size} days")
     if args.resume:
-        print(f"Resume: Enabled (max age: {args.max_age}h)")
+        print(f"  Resume: Enabled (max age: {args.max_age}h)")
     if args.force:
-        print(f"Force: Re-run all horizons")
+        print(f"  Force: Re-run all horizons")
     print(f"{'='*80}\n")
 
     # Run walk-forward for each horizon
@@ -229,20 +263,21 @@ def main():
 
     # Create comparison report
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-    output_dir = Path('experiments/walk_forward')
+    output_dir = Path('experiments/walk_forward_enhanced')
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    report_file = output_dir / f'multi_horizon_comparison_{timestamp}.csv'
+    report_file = output_dir / f'enhanced_multi_horizon_comparison_{timestamp}.csv'
     df = create_comparison_report(all_results, report_file)
 
     # Print summary
     print_summary(df)
 
     print(f"\n{'='*80}")
-    print(f"MULTI-HORIZON TESTING COMPLETE")
+    print(f"ENHANCED MULTI-HORIZON TESTING COMPLETE")
     print(f"{'='*80}")
-    print(f"Tested {len(all_results)} horizons")
+    print(f"Tested {len(all_results)} horizons with ALL new features")
     print(f"Results: {report_file}")
+    print(f"Features: Selection, Sequences, Quality, Cost Sensitivity, Standardized Eval")
     print(f"{'='*80}\n")
 
     return 0
