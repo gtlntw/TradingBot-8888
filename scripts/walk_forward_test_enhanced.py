@@ -46,8 +46,8 @@ from trading_bot.data.quality_checks import DataQualityChecker
 from trading_bot.data.feature_selection import FeatureSelector
 from trading_bot.data.sequences import SequenceGenerator
 from trading_bot.models.sequence_models import SequenceLSTMModel, SequenceTransformerModel
-from trading_bot.evaluation.standardized_eval import StandardizedEvaluator
 from trading_bot.evaluation.cost_sensitivity import CostSensitivityAnalyzer
+from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
 
 
 class EnhancedWalkForwardTester:
@@ -107,7 +107,6 @@ class EnhancedWalkForwardTester:
         self.cost_analyzer = CostSensitivityAnalyzer(
             cost_levels=[0.001, 0.002, 0.005, 0.01]
         )
-        self.evaluator = StandardizedEvaluator()
 
         print(f"\n{'='*80}")
         print(f"ENHANCED WALK-FORWARD TESTING: {prediction_horizon}-DAY PREDICTION")
@@ -392,18 +391,25 @@ class EnhancedWalkForwardTester:
                     y_actual = y_test
                     aligned_prices = price_data
 
-                # NEW FEATURE #4: Standardized Evaluation
-                metrics = self.evaluator.evaluate_model(
-                    y_true=y_actual,
-                    y_pred=predictions,
-                    model_name=name,
-                    prices=aligned_prices['close'].values
-                )
+                # NEW FEATURE #4: Standardized Evaluation - Calculate classification metrics
+                # Convert predictions to binary if they're probabilities
+                if len(predictions.shape) > 1 or (predictions.dtype == float and predictions.max() <= 1.0):
+                    pred_binary = (predictions.flatten() > 0.5).astype(int) if predictions.dtype == float else predictions.flatten()
+                else:
+                    pred_binary = predictions.astype(int)
 
-                # Run backtest
+                metrics = {
+                    'accuracy': accuracy_score(y_actual, pred_binary),
+                    'precision': precision_score(y_actual, pred_binary, zero_division=0),
+                    'recall': recall_score(y_actual, pred_binary, zero_division=0),
+                    'f1_score': f1_score(y_actual, pred_binary, zero_division=0)
+                }
+
+                # Run backtest - Convert predictions to trading signals
                 signals = pd.Series(0, index=aligned_prices.index)
-                signals[predictions > 0.5 if len(predictions) == len(y_actual) else predictions > 0] = 1
-                signals[predictions < 0.5 if len(predictions) == len(y_actual) else predictions < 0] = -1
+                # Use the binary predictions we already calculated
+                signals[pred_binary == 1] = 1   # Buy when profitable
+                signals[pred_binary == 0] = 0   # Hold cash when not profitable
 
                 backtester = Backtester(
                     initial_capital=100000,
