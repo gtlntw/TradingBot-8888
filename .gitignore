@@ -120,3 +120,13 @@ experiments/walk_forward/
 *.key
 *.pem
 config/secrets.yaml
+# Test reports and logs
+*_test_report.txt
+*_test_report.md
+COMPREHENSIVE_TEST_REPORT.md
+comprehensive_test_report.txt
+*.log
+quick_test.py
+test_pipeline.py
+pipeline_test_output.txt
+new_features_test.log
