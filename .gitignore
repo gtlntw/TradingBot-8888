@@ -130,3 +130,4 @@ quick_test.py
 test_pipeline.py
 pipeline_test_output.txt
 new_features_test.log
+scripts/test_new_features.py

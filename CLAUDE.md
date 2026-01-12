@@ -217,12 +217,26 @@ The `RiskManager` class provides comprehensive risk controls:
 - Combines horizon testing with walk-forward validation
 - Usage: `python scripts/run_all_horizons_walk_forward.py`
 
-### NEW Features Test Script
+### Testing New Features (2026-01-12)
 
-**`scripts/test_new_features.py`** - Tests all 2026-01-12 enhancements
-- Feature selection (60+ → 30 features)
-- Sequence models (LSTM/Transformer with 60-day lookback)
-- Data quality validation
-- Cost sensitivity analysis
-- Standardized evaluation framework
-- Usage: `python scripts/test_new_features.py --days 730`
+The new features can be tested using the existing scripts or directly via CLI commands:
+
+**Feature Selection:**
+```bash
+trading-bot data select-features --data processed.csv --max-features 30
+```
+
+**Sequence Models:**
+```bash
+trading-bot model train-sequences --data raw.csv --models lstm transformer --sequence-length 60
+```
+
+**Data Quality Checks:**
+```bash
+trading-bot data check-quality --data raw.csv --output reports/
+```
+
+**Cost Sensitivity:**
+```bash
+trading-bot model cost-sensitivity --data predictions.csv --cost-levels 0.001 0.002 0.005
+```
