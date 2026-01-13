@@ -180,14 +180,15 @@ class EnhancedWalkForwardTester:
         original_features = features_df.shape[1]
         print(f"✓ Features: {original_features} features, {len(features_df)} records")
 
-        # NEW FEATURE #6: Profitability Target (not raw returns!)
+        # NEW FEATURE #6: Profitability Target (direction prediction)
+        # Predict price direction (up/down), costs applied in backtesting
         future_return = (features_df['close'].shift(-self.prediction_horizon) /
                         features_df['close']) - 1
-        features_df['profitable_trade'] = (future_return > self.transaction_cost).astype(int)
+        features_df['profitable_trade'] = (future_return > 0).astype(int)  # Simple: up or down?
         features_df = features_df.dropna(subset=['profitable_trade'])
 
         profit_rate = features_df['profitable_trade'].mean()
-        print(f"✓ Profitability target: {profit_rate:.2%} profitable (cost={self.transaction_cost:.2%})")
+        print(f"✓ Target: {profit_rate:.2%} up days (costs={self.transaction_cost:.2%} applied in backtest)")
 
         # NEW FEATURE #1: Feature Selection
         print(f"\n🎯 Selecting best {self.max_features} features...")
