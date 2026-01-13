@@ -207,8 +207,8 @@ def main():
                        help='Maximum age of existing results in hours for resume (default: 24)')
     parser.add_argument('--no-sequences', action='store_true',
                        help='Disable sequence models (LSTM/Transformer) for faster execution')
-    parser.add_argument('--transaction-cost', type=float, default=0.002,
-                       help='Transaction cost threshold (default: 0.002 = 0.2%%)')
+    parser.add_argument('--transaction-cost', type=float, default=0.000,
+                       help='Transaction cost threshold (default: 0.000 = 0.0%%)')
     parser.add_argument('--max-features', type=int, default=30,
                        help='Maximum features to select (default: 30)')
     parser.add_argument('--sequence-length', type=int, default=60,
