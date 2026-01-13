@@ -142,3 +142,6 @@ monitor_*.sh
 monitor_*.log
 walk_forward_full.log
 test_1day.log
+walk_forward_*.log
+transformer_*.log
+horizon_monitor.log
