@@ -286,7 +286,8 @@ class EnhancedWalkForwardTester:
                     models=base_models,
                     method='voting',
                     optimize_for_sharpe=True,
-                    validation_split=0.2
+                    validation_split=0.2,
+                    min_weight=0.15  # Minimum 15% weight per model for diversity
                 )
                 ensemble.fit(X_train_scaled, y_train)
                 models['ensemble_traditional'] = ensemble
@@ -311,13 +312,16 @@ class EnhancedWalkForwardTester:
                 # Train LSTM
                 try:
                     lstm = SequenceLSTMModel(
-                        sequence_length=self.sequence_length,
-                        n_features=5,
-                        lstm_units=64,
-                        dropout=0.2,
-                        learning_rate=0.001
+                        model_type='classification',
+                        params={
+                            'units': 64,
+                            'dropout': 0.2,
+                            'learning_rate': 0.001,
+                            'epochs': 20,
+                            'batch_size': 32
+                        }
                     )
-                    lstm.fit(X_seq, y_seq, epochs=20, batch_size=32, verbose=0)
+                    lstm.fit(X_seq, y_seq)
                     models['lstm_60day'] = lstm
                     print(f"    ✓ lstm_60day")
                 except Exception as e:
@@ -326,14 +330,17 @@ class EnhancedWalkForwardTester:
                 # Train Transformer
                 try:
                     transformer = SequenceTransformerModel(
-                        sequence_length=self.sequence_length,
-                        n_features=5,
-                        d_model=64,
-                        n_heads=4,
-                        ff_dim=128,
-                        dropout=0.2
+                        model_type='classification',
+                        params={
+                            'd_model': 64,
+                            'n_heads': 4,
+                            'ff_dim': 128,
+                            'dropout': 0.2,
+                            'epochs': 20,
+                            'batch_size': 32
+                        }
                     )
-                    transformer.fit(X_seq, y_seq, epochs=20, batch_size=32, verbose=0)
+                    transformer.fit(X_seq, y_seq)
                     models['transformer_60day'] = transformer
                     print(f"    ✓ transformer_60day")
                 except Exception as e:
