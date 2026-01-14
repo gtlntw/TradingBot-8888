@@ -50,6 +50,66 @@ from trading_bot.evaluation.cost_sensitivity import CostSensitivityAnalyzer
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
 
 
+class DataNormalizer:
+    """
+    Helper class for data normalization in walk-forward testing.
+
+    NOTE: Normalization is done HERE (not in feature engineering) because:
+    - Walk-forward testing requires per-window normalization to prevent data leakage
+    - Each window must fit its own scaler on training data, then apply to test data
+    - If we normalized in feature engineering, future data would leak into training
+
+    This is the CORRECT approach for time-series cross-validation.
+    """
+
+    @staticmethod
+    def normalize_features(X_train: np.ndarray, X_test: np.ndarray) -> tuple:
+        """
+        Normalize feature data using StandardScaler (Z-score).
+
+        Args:
+            X_train: Training features (2D: samples x features)
+            X_test: Test features (2D: samples x features)
+
+        Returns:
+            (X_train_scaled, X_test_scaled, scaler)
+        """
+        scaler = StandardScaler()
+        X_train_scaled = scaler.fit_transform(X_train)
+        X_test_scaled = scaler.transform(X_test)
+        return X_train_scaled, X_test_scaled, scaler
+
+    @staticmethod
+    def normalize_sequences(X_train_seq: np.ndarray, X_test_seq: np.ndarray) -> tuple:
+        """
+        Normalize sequence data using StandardScaler (Z-score).
+
+        Args:
+            X_train_seq: Training sequences (3D: samples x timesteps x features)
+            X_test_seq: Test sequences (3D: samples x timesteps x features)
+
+        Returns:
+            (X_train_normalized, X_test_normalized, scaler)
+        """
+        # Reshape to 2D: (samples * timesteps, features)
+        train_shape = X_train_seq.shape
+        test_shape = X_test_seq.shape
+
+        X_train_flat = X_train_seq.reshape(-1, train_shape[2])
+        X_test_flat = X_test_seq.reshape(-1, test_shape[2])
+
+        # Fit scaler on training data
+        scaler = StandardScaler()
+        X_train_normalized = scaler.fit_transform(X_train_flat)
+        X_test_normalized = scaler.transform(X_test_flat)
+
+        # Reshape back to 3D
+        X_train_normalized = X_train_normalized.reshape(train_shape)
+        X_test_normalized = X_test_normalized.reshape(test_shape)
+
+        return X_train_normalized, X_test_normalized, scaler
+
+
 class EnhancedWalkForwardTester:
     """Walk-forward testing with ALL new features."""
 
@@ -256,7 +316,8 @@ class EnhancedWalkForwardTester:
         X_train = train_data[selected_features].values
         y_train = train_data['profitable_trade'].values
 
-        # Feature Scaling
+        # Feature Scaling (using helper for consistency)
+        # Note: We only have train data here, test normalization happens in test_models_for_window
         scaler = StandardScaler()
         X_train_scaled = scaler.fit_transform(X_train)
         print(f"    ✓ Feature scaling: {len(selected_features)} features normalized")
@@ -309,21 +370,12 @@ class EnhancedWalkForwardTester:
 
                 print(f"    Created {X_seq.shape[0]} sequences: {X_seq.shape}")
 
-                # CRITICAL FIX: Normalize sequences before training
-                # OHLCV data has vastly different scales (prices ~$40k-100k, volume in millions)
-                # Without normalization, neural networks can't learn effectively
-                # Using StandardScaler (same as traditional models) for consistency
-
-                # Reshape for normalization: (samples * timesteps, features)
-                original_shape = X_seq.shape
-                X_seq_reshaped = X_seq.reshape(-1, X_seq.shape[2])
-
-                # Fit scaler on training data (StandardScaler for consistency)
-                seq_scaler = StandardScaler()
-                X_seq_normalized = seq_scaler.fit_transform(X_seq_reshaped)
-
-                # Reshape back to (samples, timesteps, features)
-                X_seq_normalized = X_seq_normalized.reshape(original_shape)
+                # Normalize sequences (CRITICAL for neural networks)
+                # OHLCV data has vastly different scales - without normalization,
+                # neural networks produce degenerate predictions
+                # Create dummy test array to fit helper function signature
+                X_seq_dummy = np.zeros((1, X_seq.shape[1], X_seq.shape[2]))
+                X_seq_normalized, _, seq_scaler = DataNormalizer.normalize_sequences(X_seq, X_seq_dummy)
 
                 print(f"    ✓ Normalized sequences: mean={X_seq_normalized.mean():.4f}, std={X_seq_normalized.std():.4f}")
 
@@ -401,13 +453,14 @@ class EnhancedWalkForwardTester:
                     'profitable_trade'
                 )
 
-                # CRITICAL FIX: Apply same normalization as training
+                # Apply same normalization as training (critical for consistency)
                 if 'sequence_scaler' in models and X_seq_test is not None:
                     seq_scaler = models['sequence_scaler']
-                    original_shape = X_seq_test.shape
-                    X_seq_test_reshaped = X_seq_test.reshape(-1, X_seq_test.shape[2])
-                    X_seq_test_normalized = seq_scaler.transform(X_seq_test_reshaped)
-                    X_seq_test = X_seq_test_normalized.reshape(original_shape)
+                    # Transform test sequences using fitted scaler
+                    test_shape = X_seq_test.shape
+                    X_seq_test_flat = X_seq_test.reshape(-1, test_shape[2])
+                    X_seq_test_normalized = seq_scaler.transform(X_seq_test_flat)
+                    X_seq_test = X_seq_test_normalized.reshape(test_shape)
             except:
                 pass
 
