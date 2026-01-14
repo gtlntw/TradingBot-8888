@@ -309,6 +309,27 @@ class EnhancedWalkForwardTester:
 
                 print(f"    Created {X_seq.shape[0]} sequences: {X_seq.shape}")
 
+                # CRITICAL FIX: Normalize sequences before training
+                # OHLCV data has vastly different scales (prices ~$40k-100k, volume in millions)
+                # Without normalization, neural networks can't learn effectively
+                from sklearn.preprocessing import MinMaxScaler
+
+                # Reshape for normalization: (samples * timesteps, features)
+                original_shape = X_seq.shape
+                X_seq_reshaped = X_seq.reshape(-1, X_seq.shape[2])
+
+                # Fit scaler on training data
+                seq_scaler = MinMaxScaler(feature_range=(0, 1))
+                X_seq_normalized = seq_scaler.fit_transform(X_seq_reshaped)
+
+                # Reshape back to (samples, timesteps, features)
+                X_seq_normalized = X_seq_normalized.reshape(original_shape)
+
+                print(f"    ✓ Normalized sequences: min={X_seq_normalized.min():.4f}, max={X_seq_normalized.max():.4f}")
+
+                # Store scaler for test data
+                models['sequence_scaler'] = seq_scaler
+
                 # Train LSTM
                 try:
                     lstm = SequenceLSTMModel(
@@ -321,7 +342,7 @@ class EnhancedWalkForwardTester:
                             'batch_size': 32
                         }
                     )
-                    lstm.fit(X_seq, y_seq)
+                    lstm.fit(X_seq_normalized, y_seq)
                     models['lstm_60day'] = lstm
                     print(f"    ✓ lstm_60day")
                 except Exception as e:
@@ -340,7 +361,7 @@ class EnhancedWalkForwardTester:
                             'batch_size': 32
                         }
                     )
-                    transformer.fit(X_seq, y_seq)
+                    transformer.fit(X_seq_normalized, y_seq)
                     models['transformer_60day'] = transformer
                     print(f"    ✓ transformer_60day")
                 except Exception as e:
@@ -379,12 +400,24 @@ class EnhancedWalkForwardTester:
                     ['open', 'high', 'low', 'close', 'volume'],
                     'profitable_trade'
                 )
+
+                # CRITICAL FIX: Apply same normalization as training
+                if 'sequence_scaler' in models and X_seq_test is not None:
+                    seq_scaler = models['sequence_scaler']
+                    original_shape = X_seq_test.shape
+                    X_seq_test_reshaped = X_seq_test.reshape(-1, X_seq_test.shape[2])
+                    X_seq_test_normalized = seq_scaler.transform(X_seq_test_reshaped)
+                    X_seq_test = X_seq_test_normalized.reshape(original_shape)
             except:
                 pass
 
         window_results = {}
 
         for name, model in models.items():
+            # Skip non-model items (like scalers)
+            if name == 'sequence_scaler':
+                continue
+
             try:
                 # Get predictions
                 if name in ['lstm_60day', 'transformer_60day']:
