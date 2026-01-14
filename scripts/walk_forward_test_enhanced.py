@@ -312,20 +312,20 @@ class EnhancedWalkForwardTester:
                 # CRITICAL FIX: Normalize sequences before training
                 # OHLCV data has vastly different scales (prices ~$40k-100k, volume in millions)
                 # Without normalization, neural networks can't learn effectively
-                from sklearn.preprocessing import MinMaxScaler
+                # Using StandardScaler (same as traditional models) for consistency
 
                 # Reshape for normalization: (samples * timesteps, features)
                 original_shape = X_seq.shape
                 X_seq_reshaped = X_seq.reshape(-1, X_seq.shape[2])
 
-                # Fit scaler on training data
-                seq_scaler = MinMaxScaler(feature_range=(0, 1))
+                # Fit scaler on training data (StandardScaler for consistency)
+                seq_scaler = StandardScaler()
                 X_seq_normalized = seq_scaler.fit_transform(X_seq_reshaped)
 
                 # Reshape back to (samples, timesteps, features)
                 X_seq_normalized = X_seq_normalized.reshape(original_shape)
 
-                print(f"    ✓ Normalized sequences: min={X_seq_normalized.min():.4f}, max={X_seq_normalized.max():.4f}")
+                print(f"    ✓ Normalized sequences: mean={X_seq_normalized.mean():.4f}, std={X_seq_normalized.std():.4f}")
 
                 # Store scaler for test data
                 models['sequence_scaler'] = seq_scaler
