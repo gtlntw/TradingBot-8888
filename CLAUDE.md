@@ -202,41 +202,212 @@ The `RiskManager` class provides comprehensive risk controls:
 
 ## Testing Scripts
 
-### Existing Test Scripts (`scripts/`)
+### Current Testing Framework (2026-01-15)
 
-**`scripts/test_pipeline.py`** - Traditional pipeline testing (pre-2026 features)
-- Tests different prediction horizons (1, 7, 14, 28 days)
-- Full pipeline: data collection → preprocessing → feature engineering → training → evaluation → backtesting
-- Usage: `python scripts/test_pipeline.py --horizon 7 --days 730`
+**Recommended:** Use `scripts/walk_forward_test_enhanced.py` for all testing - it includes all 6 new features and proper fixes.
 
-**`scripts/walk_forward_test.py`** - Walk-forward validation
-- Tests model robustness with expanding/rolling windows
-- Usage: `python scripts/walk_forward_test.py`
+### Testing New Features (2026-01-12 - UPDATED 2026-01-15)
 
-**`scripts/run_all_horizons_walk_forward.py`** - Comprehensive horizon testing
-- Combines horizon testing with walk-forward validation
-- Usage: `python scripts/run_all_horizons_walk_forward.py`
+The project now includes **6 major enhancements** integrated into an enhanced walk-forward testing framework:
 
-### Testing New Features (2026-01-12)
+#### New Features Overview
 
-The new features can be tested using the existing scripts or directly via CLI commands:
+1. **Feature Selection** - Automatic selection of best features (default: 30)
+2. **Sequence Models** - 30-day LSTM/Transformer models on raw OHLCV
+3. **Data Quality Validation** - Comprehensive data quality checks
+4. **Profitability Target** - Binary classification (up/down vs raw returns)
+5. **Transaction Cost Sensitivity** - Realistic cost modeling (0.2% default)
+6. **Standardized Evaluation** - Consistent metrics across all models
+
+#### Enhanced Walk-Forward Testing
+
+**Primary Script:** `scripts/walk_forward_test_enhanced.py`
+
+This script integrates all 6 new features into a comprehensive testing framework with proper time-series validation.
+
+**Basic Usage:**
+```bash
+# Quick test (1-day horizon, 12 windows)
+python scripts/walk_forward_test_enhanced.py --horizon 1 --quick
+
+# Full test (1-day horizon, all data)
+python scripts/walk_forward_test_enhanced.py --horizon 1 --days 2190
+
+# Multiple horizons
+python scripts/walk_forward_test_enhanced.py --horizon 7 --days 2190
+```
+
+**Command-Line Options:**
+```bash
+--horizon N         # Prediction horizon in days (1, 7, 14, 28, 60)
+--days N           # Total days of historical data to use (default: 2190)
+--mode MODE        # 'expanding' (default) or 'rolling' windows
+--quick            # Quick test mode (12 windows instead of full split)
+--no-sequences     # Skip sequence model training (faster)
+```
+
+**Example Outputs:**
+```
+Configuration:
+  Mode: EXPANDING
+  Train Window: 365 days
+  Test Window: 60 days
+  Step Size: 60 days
+
+Models Trained Per Window:
+  - 5 Traditional: Random Forest, XGBoost, LightGBM, LSTM, Transformer
+  - 1 Ensemble: Sharpe-optimized voting (min_weight=0.15)
+  - 2 Sequence: lstm_60day, transformer_60day (30-day lookback)
+
+Results:
+  ✓ Model Performance Summary (per window)
+  ✓ Aggregated Results (across all windows)
+  ✓ Buy & Hold Baseline Comparison
+```
+
+#### Test Configuration Details
+
+**Data Split:**
+- **Expanding windows** (default): Train size grows each window
+- **Rolling windows**: Fixed train size, sliding forward
+- **Time-series safe**: No future data leakage
 
 **Feature Selection:**
-```bash
-trading-bot data select-features --data processed.csv --max-features 30
-```
+- Starts with 60+ engineered features
+- Removes correlated features (>0.95 correlation)
+- Selects top 30 by Random Forest importance
+- Applied per-window to prevent leakage
+
+**Normalization:**
+- **Traditional models**: StandardScaler on 30 engineered features
+- **Sequence models**: StandardScaler on 5 raw OHLCV features
+- **Per-window fitting**: Each window fits its own scaler
+- See `NORMALIZATION_ARCHITECTURE.md` for rationale
+
+**Target Creation:**
+- **Formula**: `profitable_trade = (future_return > 0)`
+- **Binary classification**: 1 if price goes up, 0 if down
+- **Transaction costs**: Applied only in backtesting (0.1% commission + 0.1% slippage)
+- **NO cost in target**: Prevents double-counting issue
+
+**Ensemble Method:**
+- **Type**: Sharpe-optimized voting ensemble
+- **Optimization**: Maximizes Sharpe ratio on 20% validation split
+- **Diversity constraint**: `min_weight=0.15` (prevents model exclusion)
+- **Models combined**: 5 traditional models (RF, XGB, LGB, LSTM, Transformer)
+
+#### Important Fixes Applied
+
+**1. Sequence Model Normalization Fix** (2026-01-15)
+- **Issue**: Sequence models produced degenerate predictions (all constant)
+- **Root cause**: Missing normalization of OHLCV data
+- **Fix**: Added StandardScaler normalization (same as traditional models)
+- **Impact**: Sequence models now produce diverse predictions
+- **Details**: See `SEQUENCE_MODEL_FIX.md`
+
+**2. Transaction Cost Accounting**
+- **Issue**: Costs were applied twice (in target AND backtesting)
+- **Fix**: Costs only in backtesting, target is `return > 0`
+- **Impact**: More realistic returns, better class balance (50% vs 45%)
+
+**3. Ensemble Minimum Weight**
+- **Issue**: Optimizer could exclude models (0.001 weight)
+- **Fix**: Added `min_weight=0.15` constraint
+- **Impact**: All models contribute meaningfully to ensemble
+
+#### Sequence Models Architecture
+
+**Traditional Models:**
+- Input: 30 engineered features (technical indicators, market features)
+- Architecture: Single timestep prediction
+- Examples: Random Forest, XGBoost, LightGBM
 
 **Sequence Models:**
-```bash
-trading-bot model train-sequences --data raw.csv --models lstm transformer --sequence-length 60
+- Input: 30-day × 5 OHLCV sequences (raw data, no engineering)
+- Architecture: Bidirectional LSTM/Transformer with attention
+- Models: `lstm_60day`, `transformer_60day`
+- Purpose: Compare raw sequences vs engineered features
+
+**Key Difference:**
+```
+Traditional: [RSI, MACD, SMA, ...] (30 features, 1 timestep) → Prediction
+Sequence:    [[O,H,L,C,V], [O,H,L,C,V], ...] (5 features, 30 timesteps) → Prediction
 ```
 
-**Data Quality Checks:**
+#### Testing Multiple Horizons
+
+To test all horizons (1, 7, 14, 28, 60 days):
+
 ```bash
-trading-bot data check-quality --data raw.csv --output reports/
+# Option 1: Run sequentially
+for horizon in 1 7 14 28 60; do
+    python scripts/walk_forward_test_enhanced.py --horizon $horizon --quick
+done
+
+# Option 2: Use existing multi-horizon script
+python scripts/run_all_horizons_walk_forward.py
 ```
 
-**Cost Sensitivity:**
-```bash
-trading-bot model cost-sensitivity --data predictions.csv --cost-levels 0.001 0.002 0.005
+**Expected Runtime:**
+- Quick mode (12 windows): ~30-45 minutes per horizon
+- Full mode (all windows): ~2-4 hours per horizon
+- Sequence models add ~50% overhead
+
+#### Output Files & Logs
+
+All tests create comprehensive logs and can save results:
+
+```python
+# Results are printed to stdout and can be redirected
+python scripts/walk_forward_test_enhanced.py --horizon 1 --quick > results_1day.log 2>&1
+
+# Key sections in output:
+# - Data quality checks
+# - Feature selection summary
+# - Per-window results (8 models × 12 windows)
+# - Aggregated performance summary
+# - Buy & Hold baseline comparison
 ```
+
+#### Debugging & Validation Scripts
+
+Several debugging scripts are available:
+
+- `scripts/debug_simple.py` - Quick LSTM prediction test
+- `scripts/test_normalization_fix.py` - Validates normalization fix
+- `scripts/test_standardscaler.py` - Tests StandardScaler consistency
+
+#### Architecture Documentation
+
+For deeper understanding:
+- **`NORMALIZATION_ARCHITECTURE.md`** - Why normalization is in test script
+- **`SEQUENCE_MODEL_FIX.md`** - Degenerate model investigation & fix
+- **`CLAUDE.md`** - This file (you're reading it!)
+
+---
+
+### Legacy Testing Scripts (Pre-2026 Features)
+
+The following scripts predate the 6 new features and use older architectures. They are kept for backward compatibility but are NOT recommended for new work:
+
+**`scripts/test_pipeline.py`** - Traditional pipeline testing
+- Tests different prediction horizons (1, 7, 14, 28 days)
+- Full pipeline: data collection → preprocessing → feature engineering → training → evaluation → backtesting
+- ⚠️ Does NOT include: feature selection, sequence models, data quality checks, or fixes
+- Usage: `python scripts/test_pipeline.py --horizon 7 --days 730`
+
+**`scripts/walk_forward_test.py`** - Basic walk-forward validation
+- Tests model robustness with expanding/rolling windows
+- ⚠️ Does NOT include new features or normalization fixes
+- Usage: `python scripts/walk_forward_test.py`
+
+**`scripts/run_all_horizons_walk_forward.py`** - Multi-horizon testing (legacy)
+- Combines horizon testing with walk-forward validation
+- ⚠️ Uses old architecture without new features
+- Usage: `python scripts/run_all_horizons_walk_forward.py`
+
+**Migration Note:** If you have existing results from these scripts, they are NOT directly comparable to results from `walk_forward_test_enhanced.py` due to:
+- Different normalization approach
+- Transaction cost accounting changes
+- Addition of sequence models
+- Feature selection differences
