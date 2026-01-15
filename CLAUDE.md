@@ -336,22 +336,35 @@ Sequence:    [[O,H,L,C,V], [O,H,L,C,V], ...] (5 features, 30 timesteps) → Pred
 
 #### Testing Multiple Horizons
 
-To test all horizons (1, 7, 14, 28, 60 days):
+**Recommended:** Use `scripts/run_all_horizons_walk_forward.py` to test all horizons automatically.
+
+This script runs the enhanced walk-forward test across all 5 horizons (1, 7, 14, 28, 60 days) with all 6 new features included.
 
 ```bash
-# Option 1: Run sequentially
-for horizon in 1 7 14 28 60; do
-    python scripts/walk_forward_test_enhanced.py --horizon $horizon --quick
-done
-
-# Option 2: Use existing multi-horizon script
+# Run all 5 horizons with new features
 python scripts/run_all_horizons_walk_forward.py
+
+# Quick mode (faster, 12 windows per horizon)
+python scripts/run_all_horizons_walk_forward.py --quick
+
+# Skip sequence models for speed
+python scripts/run_all_horizons_walk_forward.py --quick --no-sequences
+
+# Use rolling windows instead of expanding
+python scripts/run_all_horizons_walk_forward.py --mode rolling
 ```
 
+**What it does:**
+- Runs `walk_forward_test_enhanced.py` for each horizon (1, 7, 14, 28, 60 days)
+- Includes ALL 6 new features (feature selection, sequence models, data quality, etc.)
+- Includes ALL fixes (normalization, transaction costs, ensemble min_weight)
+- Generates comparison report across all horizons
+- Saves results to `experiments/walk_forward_enhanced/`
+
 **Expected Runtime:**
-- Quick mode (12 windows): ~30-45 minutes per horizon
-- Full mode (all windows): ~2-4 hours per horizon
-- Sequence models add ~50% overhead
+- Quick mode (12 windows × 5 horizons): ~2.5-4 hours total
+- Full mode (all windows × 5 horizons): ~10-20 hours total
+- Sequence models add ~50% overhead per horizon
 
 #### Output Files & Logs
 
@@ -388,7 +401,7 @@ For deeper understanding:
 
 ### Legacy Testing Scripts (Pre-2026 Features)
 
-The following scripts predate the 6 new features and use older architectures. They are kept for backward compatibility but are NOT recommended for new work:
+The following scripts predate the 6 new features and use older architectures. They are kept for backward compatibility but are **NOT recommended** for new work:
 
 **`scripts/test_pipeline.py`** - Traditional pipeline testing
 - Tests different prediction horizons (1, 7, 14, 28 days)
@@ -396,18 +409,15 @@ The following scripts predate the 6 new features and use older architectures. Th
 - ⚠️ Does NOT include: feature selection, sequence models, data quality checks, or fixes
 - Usage: `python scripts/test_pipeline.py --horizon 7 --days 730`
 
-**`scripts/walk_forward_test.py`** - Basic walk-forward validation
+**`scripts/walk_forward_test.py`** - Basic walk-forward validation (OLD)
 - Tests model robustness with expanding/rolling windows
 - ⚠️ Does NOT include new features or normalization fixes
-- Usage: `python scripts/walk_forward_test.py`
+- ⚠️ REPLACED by `walk_forward_test_enhanced.py`
+- Usage: `python scripts/walk_forward_test.py` (not recommended)
 
-**`scripts/run_all_horizons_walk_forward.py`** - Multi-horizon testing (legacy)
-- Combines horizon testing with walk-forward validation
-- ⚠️ Uses old architecture without new features
-- Usage: `python scripts/run_all_horizons_walk_forward.py`
-
-**Migration Note:** If you have existing results from these scripts, they are NOT directly comparable to results from `walk_forward_test_enhanced.py` due to:
-- Different normalization approach
-- Transaction cost accounting changes
-- Addition of sequence models
-- Feature selection differences
+**Migration Note:** If you have existing results from these legacy scripts, they are NOT directly comparable to results from the enhanced testing framework due to:
+- Different normalization approach (no StandardScaler for sequences)
+- Transaction cost accounting changes (double-counting fixed)
+- Addition of sequence models (lstm_60day, transformer_60day)
+- Feature selection differences (30 features vs all features)
+- Ensemble min_weight constraint (not present in old version)
