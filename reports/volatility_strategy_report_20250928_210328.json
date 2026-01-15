@@ -1,0 +1,93 @@
+{
+  "strategy_name": "volatility_strategy",
+  "generated_at": "2025-09-28T21:03:28.664826",
+  "timestamp": "20250928_210328",
+  "summary": {
+    "period": {
+      "start_date": "2024-09-29 00:00:00+00:00",
+      "end_date": "2025-09-28 00:00:00+00:00",
+      "duration_days": 364
+    },
+    "capital": {
+      "initial": 50000,
+      "final": 50000,
+      "total_return": 0.0
+    },
+    "key_metrics": {
+      "total_return": 0.0,
+      "annualized_return": 0.0,
+      "volatility": 0.0,
+      "sharpe_ratio": 0.0,
+      "max_drawdown": 0.0,
+      "win_rate": 0.0,
+      "total_trades": 364
+    }
+  },
+  "analysis": {
+    "returns_analysis": {
+      "statistics": {
+        "count": 364,
+        "mean": 0.0,
+        "std": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "skewness": 0.0,
+        "kurtosis": 0.0
+      },
+      "distribution": {
+        "positive_returns": "0",
+        "negative_returns": "0",
+        "zero_returns": "364",
+        "positive_percentage": 0.0,
+        "best_day": 0.0,
+        "worst_day": 0.0
+      },
+      "rolling_stats": {
+        "rolling_30d_volatility": 0.0,
+        "rolling_90d_volatility": 0.0,
+        "rolling_30d_sharpe": NaN,
+        "rolling_90d_sharpe": NaN
+      },
+      "tail_risk": {
+        "var_95": 0.0,
+        "var_99": 0.0,
+        "cvar_95": 0.0,
+        "cvar_99": 0.0,
+        "tail_ratio": NaN
+      }
+    },
+    "risk_analysis": {
+      "volatility": {
+        "daily_volatility": 0.0,
+        "annualized_volatility": 0.0,
+        "volatility_of_volatility": 0.0,
+        "downside_volatility": NaN
+      },
+      "drawdown": {
+        "current_drawdown": 0.0,
+        "max_drawdown": 0.0,
+        "avg_drawdown": NaN,
+        "drawdown_periods": 0,
+        "time_underwater": 0.0
+      },
+      "systematic_risk": {
+        "note": "Requires benchmark data for beta calculation"
+      }
+    },
+    "drawdown_analysis": {
+      "total_drawdown_periods": 0,
+      "drawdown_periods": [],
+      "average_drawdown_duration": NaN,
+      "average_drawdown_depth": NaN,
+      "longest_drawdown": 0,
+      "deepest_drawdown": 0
+    }
+  },
+  "plots": {
+    "equity_curve": "reports/volatility_strategy_20250928_210328/equity_curve.html",
+    "returns_distribution": "reports/volatility_strategy_20250928_210328/returns_distribution.html",
+    "drawdown": "reports/volatility_strategy_20250928_210328/drawdown.html",
+    "rolling_metrics": "reports/volatility_strategy_20250928_210328/rolling_metrics.html",
+    "monthly_returns": "reports/volatility_strategy_20250928_210328/monthly_returns.html"
+  }
+}
