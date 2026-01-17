@@ -370,17 +370,27 @@ python scripts/run_all_horizons_walk_forward.py --mode rolling
 
 All tests create comprehensive logs and can save results:
 
-```python
-# Results are printed to stdout and can be redirected
+```bash
+# Option 1: Redirect output to file (no console output)
 python scripts/walk_forward_test_enhanced.py --horizon 1 --quick > results_1day.log 2>&1
 
-# Key sections in output:
-# - Data quality checks
-# - Feature selection summary
-# - Per-window results (8 models × 12 windows)
-# - Aggregated performance summary
-# - Buy & Hold baseline comparison
+# Option 2: Use tee to see output AND save to file (recommended)
+python scripts/run_all_horizons_walk_forward.py --days 3650 --quick 2>&1 | tee results_10years.log
+
+# Single horizon with tee
+python scripts/walk_forward_test_enhanced.py --horizon 1 --quick 2>&1 | tee results_1day.log
 ```
+
+**Key sections in output:**
+- Data quality checks
+- Feature selection summary
+- Per-window results (8 models × 12 windows)
+- Aggregated performance summary
+- Buy & Hold baseline comparison
+
+**Automatic JSON files saved to:**
+- `experiments/walk_forward_enhanced/enhanced_wf_{horizon}day_{timestamp}.json`
+- `experiments/walk_forward_enhanced/horizon_comparison_{timestamp}.csv` (multi-horizon tests)
 
 #### Debugging & Validation Scripts
 
