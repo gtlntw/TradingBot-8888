@@ -392,9 +392,15 @@ Several debugging scripts are available:
 
 #### Architecture Documentation
 
-For deeper understanding:
-- **`NORMALIZATION_ARCHITECTURE.md`** - Why normalization is in test script
-- **`SEQUENCE_MODEL_FIX.md`** - Degenerate model investigation & fix
+For deeper understanding, see the `docs/` directory:
+- **`docs/NORMALIZATION_ARCHITECTURE.md`** - Why normalization is in test script
+- **`docs/SEQUENCE_MODEL_FIX.md`** - Degenerate model investigation & fix
+- **`docs/COST_ACCOUNTING_ISSUE.md`** - Transaction cost double-counting issue
+- **`docs/COST_FIX_COMPARISON.md`** - Before/after comparison of cost fix
+- **`docs/ENSEMBLE_AND_SEQUENCE_ANALYSIS.md`** - Analysis of ensemble and sequence models
+- **`docs/BOTH_FIXES_VERIFIED.md`** - Verification of normalization and cost fixes
+- **`docs/TRANSFORMER_FIX_SUMMARY.md`** - Transformer model improvements
+- **`docs/EXPERIMENT_STATUS.md`** - Current experiment status and results
 - **`CLAUDE.md`** - This file (you're reading it!)
 
 ---
