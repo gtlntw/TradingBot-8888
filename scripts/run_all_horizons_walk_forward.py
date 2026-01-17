@@ -132,7 +132,8 @@ def create_comparison_report(all_results: dict, output_file: Path):
                 'Std Return (%)': stats['std_return'] * 100,
                 'Median Return (%)': stats['median_return'] * 100,
                 'Mean Sharpe': stats['mean_sharpe'],
-                'Mean Win Rate (%)': stats['mean_win_rate'] * 100,
+                'Mean Accuracy (%)': stats['mean_accuracy'] * 100,
+                'Mean F1 Score': stats['mean_f1_score'],
                 'Positive Windows': stats['positive_windows'],
                 'Negative Windows': stats['negative_windows'],
                 'Total Windows': stats['num_windows']
@@ -171,7 +172,9 @@ def print_summary(df: pd.DataFrame):
         print(f"  Total Return: {best_model['Total Return (%)']:+.2f}%")
         print(f"  Mean Return: {best_model['Mean Return (%)']:+.2f}%")
         print(f"  Mean Sharpe: {best_model['Mean Sharpe']:.2f}")
-        print(f"  Win Rate: {best_model['Positive Windows']}/{best_model['Total Windows']} windows ({best_model['Mean Win Rate (%)']:.1f}%)")
+        print(f"  Mean Accuracy: {best_model['Mean Accuracy (%)']:.1f}%")
+        print(f"  Mean F1 Score: {best_model['Mean F1 Score']:.3f}")
+        print(f"  Win Rate: {best_model['Positive Windows']}/{best_model['Total Windows']} windows")
 
         # Buy-and-hold comparison
         bh_row = horizon_df[horizon_df['Model'] == 'buy_and_hold']
