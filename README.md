@@ -7,8 +7,11 @@ A sophisticated machine learning-powered Bitcoin trading bot with comprehensive 
 ### Core Capabilities
 - **Multi-source Data Collection**: Binance, Yahoo Finance, CoinGecko APIs with async fetching
 - **Advanced Feature Engineering**: 50+ technical indicators, market features, sentiment analysis
-- **Machine Learning Pipeline**: Random Forest, XGBoost, LightGBM, LSTM neural networks
-- **Ensemble Methods**: Voting, stacking, and blending with automatic weight optimization
+- **Machine Learning Pipeline**: Random Forest, XGBoost, LightGBM, LSTM, and Transformer models
+- **Ensemble Methods**: Sharpe-optimized voting, stacking, and blending with diversity constraints
+- **Sequence Models**: LSTM/Transformer models trained on raw 30-day OHLCV sequences
+- **Feature Selection**: Automatic selection of top 30 features using importance-based filtering
+- **Data Quality Validation**: Comprehensive data quality checks and validation
 - **Comprehensive Backtesting**: Realistic trading simulation with slippage and commissions
 - **Risk Management**: Position sizing, stop-loss, portfolio VaR, drawdown controls
 - **Live Trading**: Paper and live trading modes with real-time execution
@@ -55,6 +58,19 @@ docker-compose up --build
 docker build -t bitcoin-trading-bot .
 docker run -it bitcoin-trading-bot
 ```
+
+## 🎯 Recent Enhancements (2026-01)
+
+The project includes **6 major enhancements** for improved prediction accuracy:
+
+1. **Feature Selection** - Automatic selection of top 30 features from 60+ engineered features
+2. **Sequence Models** - LSTM/Transformer models trained on 30-day raw OHLCV sequences
+3. **Data Quality Validation** - Comprehensive checks for missing data, outliers, and quality issues
+4. **Profitability Target** - Binary classification (up/down) optimized for trading decisions
+5. **Transaction Cost Sensitivity** - Realistic cost modeling (0.2% default) in backtesting
+6. **Standardized Evaluation** - Consistent metrics and normalization across all models
+
+See `docs/` directory for detailed documentation on architecture and experiments.
 
 ## 🚀 Quick Start
 
@@ -301,6 +317,20 @@ trading_bot/
 4. **New Metric**: Extend `PerformanceMetrics` in `evaluation/metrics.py`
 
 ### Testing
+
+#### Enhanced Walk-Forward Testing (Recommended)
+```bash
+# Quick test with all 6 new features (1-day horizon, 12 windows)
+python scripts/walk_forward_test_enhanced.py --horizon 1 --quick
+
+# Full test across all horizons (1, 7, 14, 28, 60 days)
+python scripts/run_all_horizons_walk_forward.py
+
+# Quick mode without sequence models (faster)
+python scripts/run_all_horizons_walk_forward.py --quick --no-sequences
+```
+
+#### Unit & Integration Tests
 ```bash
 # Run unit tests
 pytest tests/unit/
@@ -311,6 +341,8 @@ pytest tests/integration/
 # Run with coverage
 pytest --cov=trading_bot tests/
 ```
+
+**Note**: The enhanced walk-forward testing framework includes all 6 new features, normalization fixes, and proper time-series validation. See `CLAUDE.md` for detailed testing documentation.
 
 ## ⚠️ Disclaimer
 
@@ -330,9 +362,14 @@ MIT License - see LICENSE file for details.
 
 ## 📞 Support
 
-- Documentation: See `docs/` directory
-- Issues: GitHub Issues
-- Discussions: GitHub Discussions
+- **Documentation**: See `docs/` directory for architecture details, experiment results, and implementation guides
+  - `docs/NORMALIZATION_ARCHITECTURE.md` - Normalization approach and rationale
+  - `docs/SEQUENCE_MODEL_FIX.md` - Sequence model improvements
+  - `docs/ENSEMBLE_AND_SEQUENCE_ANALYSIS.md` - Model performance analysis
+  - `docs/EXPERIMENT_STATUS.md` - Current experiment results
+- **Development Guide**: See `CLAUDE.md` for detailed development instructions
+- **Issues**: GitHub Issues
+- **Discussions**: GitHub Discussions
 
 ---
 

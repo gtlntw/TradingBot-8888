@@ -7,6 +7,7 @@ import numpy as np
 import pandas as pd
 from typing import Dict, List, Tuple, Optional
 from datetime import timedelta
+from pathlib import Path
 import matplotlib.pyplot as plt
 
 from trading_bot.utils.logger import LoggerMixin
@@ -350,7 +351,11 @@ class DataQualityChecker(LoggerMixin):
         self.logger.info("Checking data freshness...")
 
         latest_date = data.index[-1]
-        now = pd.Timestamp.now()
+        # Handle timezone-aware timestamps
+        if latest_date.tzinfo is not None:
+            now = pd.Timestamp.now(tz=latest_date.tzinfo)
+        else:
+            now = pd.Timestamp.now()
         age = now - latest_date
         age_hours = age.total_seconds() / 3600
 
