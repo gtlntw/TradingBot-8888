@@ -95,7 +95,8 @@ class TechnicalIndicators(FeatureCalculator, LoggerMixin):
         df['aroon_indicator'] = aroon.aroon_indicator()
 
         # Parabolic SAR
-        df['psar'] = ta.trend.psar(df['high'], df['low'], df['close'])
+        psar_indicator = ta.trend.PSARIndicator(df['high'], df['low'], df['close'])
+        df['psar'] = psar_indicator.psar()
 
         # Commodity Channel Index
         df['cci'] = ta.trend.cci(df['high'], df['low'], df['close'], window=20)
@@ -137,7 +138,7 @@ class TechnicalIndicators(FeatureCalculator, LoggerMixin):
         """Add volume-based technical indicators."""
         # Volume SMA
         for period in [10, 20, 50]:
-            df[f'volume_sma_{period}'] = ta.volume.volume_sma(df['volume'], window=period)
+            df[f'volume_sma_{period}'] = ta.trend.sma_indicator(df['volume'], window=period)
 
         # On Balance Volume
         df['obv'] = ta.volume.on_balance_volume(df['close'], df['volume'])

@@ -77,13 +77,21 @@ def run_walk_forward(horizon: int, args: argparse.Namespace) -> dict:
             print(f"✓ Resuming: Using existing result for {horizon}-day horizon\n")
             return existing
 
+    # Calculate minimum required test window for sequence generation
+    min_required = args.sequence_length + horizon
+    test_window = max(args.test_window, min_required + 30)
+
+    if test_window != args.test_window:
+        print(f"⚠️  Adjusted test window: {args.test_window} → {test_window} days")
+        print(f"   (Horizon {horizon} + sequence length {args.sequence_length} = {min_required} days minimum)\n")
+
     cmd = [
         'python', 'scripts/walk_forward_test_enhanced.py',
         '--horizon', str(horizon),
         '--days', str(args.days),
         '--mode', args.mode,
         '--train-window', str(args.train_window),
-        '--test-window', str(args.test_window),
+        '--test-window', str(test_window),
         '--step-size', str(args.step_size),
         '--transaction-cost', str(args.transaction_cost),
         '--max-features', str(args.max_features),
@@ -96,11 +104,12 @@ def run_walk_forward(horizon: int, args: argparse.Namespace) -> dict:
     if args.quick:
         cmd.append('--quick')
 
-    result = subprocess.run(cmd, capture_output=True, text=True)
+    # CRITICAL FIX: Don't capture output - stream to console/log to avoid OOM
+    result = subprocess.run(cmd, capture_output=False, text=True)
 
     if result.returncode != 0:
-        print(f"✗ Walk-forward test failed for {horizon}-day horizon")
-        print(f"Error: {result.stderr}")
+        print(f"\n✗ Walk-forward test failed for {horizon}-day horizon")
+        print(f"   (Check output above for errors)")
         return None
 
     # Find the output file
@@ -247,6 +256,22 @@ def main():
         print(f"  Resume: Enabled (max age: {args.max_age}h)")
     if args.force:
         print(f"  Force: Re-run all horizons")
+
+    # Validate test window requirements for each horizon
+    print(f"\n📊 Test Window Validation:")
+    adjustments_needed = False
+    for horizon in args.horizons:
+        min_required = args.sequence_length + horizon
+        if args.test_window < min_required:
+            adjusted = min_required + 30
+            print(f"  ⚠️  {horizon}-day: {args.test_window} days → {adjusted} days (need {min_required} min)")
+            adjustments_needed = True
+        else:
+            print(f"  ✓ {horizon}-day: {args.test_window} days (need {min_required} min)")
+
+    if adjustments_needed:
+        print(f"\n  Note: Test windows will be auto-adjusted per horizon to ensure sufficient data")
+
     print(f"{'='*80}\n")
 
     # Run walk-forward for each horizon
