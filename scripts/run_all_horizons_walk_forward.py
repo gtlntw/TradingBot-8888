@@ -10,6 +10,12 @@ NOW USES ALL NEW FEATURES (2026-01-12):
 - Cost Sensitivity Analysis
 - Standardized Evaluation
 
+CROSS-HORIZON FAIRNESS FIX (2026-01-25):
+- Calculates unified test window size for ALL horizons
+- Ensures all horizons use same window size (e.g., 150 days for all)
+- Prevents per-horizon adjustments that break comparison fairness
+- Result: Buy-and-hold returns identical, comparisons valid
+
 This script runs comprehensive walk-forward tests for all 5 horizons
 (1, 7, 14, 28, 60 days) and generates a comparison report.
 
@@ -64,8 +70,14 @@ def find_existing_result(horizon: int, max_age_hours: int = 24) -> dict:
     return None
 
 
-def run_walk_forward(horizon: int, args: argparse.Namespace) -> dict:
-    """Run walk-forward test for a single horizon."""
+def run_walk_forward(horizon: int, args: argparse.Namespace, unified_test_window: int) -> dict:
+    """Run walk-forward test for a single horizon.
+
+    Args:
+        horizon: Prediction horizon in days
+        args: Command line arguments
+        unified_test_window: Unified test window size for all horizons (for fair comparison)
+    """
     print(f"\n{'='*80}")
     print(f"RUNNING WALK-FORWARD TEST: {horizon}-DAY HORIZON")
     print(f"{'='*80}\n")
@@ -77,13 +89,16 @@ def run_walk_forward(horizon: int, args: argparse.Namespace) -> dict:
             print(f"✓ Resuming: Using existing result for {horizon}-day horizon\n")
             return existing
 
-    # Calculate minimum required test window for sequence generation
+    # Use unified test window for fair cross-horizon comparison
+    test_window = unified_test_window
     min_required = args.sequence_length + horizon
-    test_window = max(args.test_window, min_required + 30)
 
-    if test_window != args.test_window:
-        print(f"⚠️  Adjusted test window: {args.test_window} → {test_window} days")
-        print(f"   (Horizon {horizon} + sequence length {args.sequence_length} = {min_required} days minimum)\n")
+    print(f"📊 Test window: {test_window} days (unified across all horizons)")
+    print(f"   Minimum required for {horizon}-day + {args.sequence_length} sequence: {min_required} days")
+    if test_window >= min_required:
+        print(f"   ✓ Sufficient for sequence models\n")
+    else:
+        print(f"   ⚠️  Insufficient for sequence models (will skip or fail)\n")
 
     cmd = [
         'python', 'scripts/walk_forward_test_enhanced.py',
@@ -91,7 +106,7 @@ def run_walk_forward(horizon: int, args: argparse.Namespace) -> dict:
         '--days', str(args.days),
         '--mode', args.mode,
         '--train-window', str(args.train_window),
-        '--test-window', str(test_window),
+        '--test-window', str(unified_test_window),  # Use unified window!
         '--step-size', str(args.step_size),
         '--transaction-cost', str(args.transaction_cost),
         '--max-features', str(args.max_features),
@@ -257,28 +272,37 @@ def main():
     if args.force:
         print(f"  Force: Re-run all horizons")
 
-    # Validate test window requirements for each horizon
-    print(f"\n📊 Test Window Validation:")
-    adjustments_needed = False
+    # CRITICAL: Calculate unified test window for fair cross-horizon comparison
+    # All horizons must use the SAME test window size for valid comparison
+    print(f"\n📊 Calculating Unified Test Window:")
+    print(f"  Base test window: {args.test_window} days")
+
+    max_horizon = max(args.horizons)
+    max_required = args.sequence_length + max_horizon + 30  # +30 buffer for safety
+
+    unified_test_window = max(args.test_window, max_required)
+
+    print(f"  Maximum horizon: {max_horizon} days")
+    print(f"  Sequence length: {args.sequence_length} days")
+    print(f"  Max required: {max_required} days ({args.sequence_length} + {max_horizon} + 30 buffer)")
+    print(f"  → Unified test window: {unified_test_window} days")
+    print(f"\n  ✅ All horizons will use {unified_test_window}-day test windows")
+    print(f"     This ensures fair cross-horizon comparison!")
+
+    # Validate each horizon has enough data
+    print(f"\n  Validation per horizon:")
     for horizon in args.horizons:
         min_required = args.sequence_length + horizon
-        if args.test_window < min_required:
-            adjusted = min_required + 30
-            print(f"  ⚠️  {horizon}-day: {args.test_window} days → {adjusted} days (need {min_required} min)")
-            adjustments_needed = True
-        else:
-            print(f"  ✓ {horizon}-day: {args.test_window} days (need {min_required} min)")
-
-    if adjustments_needed:
-        print(f"\n  Note: Test windows will be auto-adjusted per horizon to ensure sufficient data")
+        status = "✓" if unified_test_window >= min_required else "✗"
+        print(f"    {status} {horizon:>2}-day: needs {min_required} days, has {unified_test_window} days")
 
     print(f"{'='*80}\n")
 
-    # Run walk-forward for each horizon
+    # Run walk-forward for each horizon using unified test window
     all_results = {}
 
     for horizon in args.horizons:
-        result = run_walk_forward(horizon, args)
+        result = run_walk_forward(horizon, args, unified_test_window)
         if result:
             all_results[horizon] = result
             print(f"✓ Completed {horizon}-day horizon")
