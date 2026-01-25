@@ -397,6 +397,9 @@ class EnhancedWalkForwardTester:
                     lstm.fit(X_seq_normalized, y_seq)
                     models['lstm_60day'] = lstm
                     print(f"    ✓ lstm_60day")
+                    # Clear session to prevent memory accumulation
+                    import tensorflow as tf
+                    tf.keras.backend.clear_session()
                 except Exception as e:
                     print(f"    ✗ lstm_60day: {str(e)}")
 
@@ -416,6 +419,9 @@ class EnhancedWalkForwardTester:
                     transformer.fit(X_seq_normalized, y_seq)
                     models['transformer_60day'] = transformer
                     print(f"    ✓ transformer_60day")
+                    # Clear session to prevent memory accumulation
+                    import tensorflow as tf
+                    tf.keras.backend.clear_session()
                 except Exception as e:
                     print(f"    ✗ transformer_60day: {str(e)}")
 
@@ -612,6 +618,19 @@ class EnhancedWalkForwardTester:
                 'test_end': window['test_dates'][1],
                 'results': results
             })
+
+            # Clean up models to free memory
+            del models
+            del scaler
+            import gc
+            gc.collect()
+
+            # Also clear TensorFlow session to free GPU/CPU memory
+            try:
+                import tensorflow as tf
+                tf.keras.backend.clear_session()
+            except:
+                pass
 
         # Aggregate results
         aggregated = self.aggregate_results(all_results)
