@@ -340,57 +340,96 @@ Sequence:    [[O,H,L,C,V], [O,H,L,C,V], ...] (5 features, 30 timesteps) → Pred
 
 This script runs the enhanced walk-forward test across all 5 horizons (1, 7, 14, 28, 60 days) with all 6 new features included.
 
-```bash
-# Run all 5 horizons with new features
-python scripts/run_all_horizons_walk_forward.py
+**IMPORTANT (2026-01-25):** Cross-horizon fairness fixes applied:
+- ✅ All horizons now test the SAME calendar period (data alignment fix)
+- ✅ All horizons use the SAME test window size (unified window fix)
+- ✅ Buy-and-hold returns are IDENTICAL across all horizons
+- ✅ Cross-horizon comparisons are now FAIR and VALID
 
-# Quick mode (faster, 12 windows per horizon)
+**Recommended Commands:**
+
+```bash
+# Full 10-year test with 10 windows (PRODUCTION)
+python scripts/run_all_horizons_walk_forward.py \
+    --days 3650 --train-window 730 --test-window 150 --step-size 300 \
+    2>&1 | tee results_full_10windows.log
+
+# Quick verification without sequences (~45-60 min)
+python scripts/run_all_horizons_walk_forward.py \
+    --days 3650 --train-window 730 --test-window 150 --step-size 300 \
+    --no-sequences \
+    2>&1 | tee results_quick_verification.log
+
+# Quick mode (3 years, faster, for testing)
 python scripts/run_all_horizons_walk_forward.py --quick
 
-# Skip sequence models for speed
-python scripts/run_all_horizons_walk_forward.py --quick --no-sequences
-
-# Use rolling windows instead of expanding
-python scripts/run_all_horizons_walk_forward.py --mode rolling
+# Custom configuration
+python scripts/run_all_horizons_walk_forward.py \
+    --days 2190 --train-window 365 --test-window 150 --step-size 200
 ```
 
 **What it does:**
 - Runs `walk_forward_test_enhanced.py` for each horizon (1, 7, 14, 28, 60 days)
 - Includes ALL 6 new features (feature selection, sequence models, data quality, etc.)
-- Includes ALL fixes (normalization, transaction costs, ensemble min_weight)
+- Includes ALL fixes (normalization, transaction costs, ensemble min_weight, cross-horizon fairness)
+- Calculates unified test window (150 days) for all horizons
 - Generates comparison report across all horizons
 - Saves results to `experiments/walk_forward_enhanced/`
 
 **Expected Runtime:**
-- Quick mode (12 windows × 5 horizons): ~2.5-4 hours total
-- Full mode (all windows × 5 horizons): ~10-20 hours total
+- Quick verification (10 windows × 5 horizons, no sequences): ~45-60 minutes
+- Full mode (10 windows × 5 horizons, with sequences): ~10-15 hours
 - Sequence models add ~50% overhead per horizon
+
+**Cross-Horizon Fairness:**
+The script now ensures fair comparison by:
+1. Collecting extra buffer data (60 days) to align all horizons
+2. Calculating unified test window size (max of all requirements)
+3. Preserving NaN values in target creation
+4. All horizons test identical calendar periods with identical window structure
 
 #### Output Files & Logs
 
 All tests create comprehensive logs and can save results:
 
 ```bash
-# Option 1: Redirect output to file (no console output)
-python scripts/walk_forward_test_enhanced.py --horizon 1 --quick > results_1day.log 2>&1
+# Recommended: Use tee to see output AND save to file
 
-# Option 2: Use tee to see output AND save to file (recommended)
-python scripts/run_all_horizons_walk_forward.py --days 3650 --quick 2>&1 | tee results_10years.log
+# Full 10-year multi-horizon test
+python scripts/run_all_horizons_walk_forward.py \
+    --days 3650 --train-window 730 --test-window 150 --step-size 300 \
+    2>&1 | tee results_full_10windows.log
 
-# Single horizon with tee
-python scripts/walk_forward_test_enhanced.py --horizon 1 --quick 2>&1 | tee results_1day.log
+# Quick verification test
+python scripts/run_all_horizons_walk_forward.py \
+    --days 3650 --train-window 730 --test-window 150 --step-size 300 \
+    --no-sequences \
+    2>&1 | tee results_quick_verification.log
+
+# Single horizon test
+python scripts/walk_forward_test_enhanced.py \
+    --horizon 14 --days 3650 --train-window 730 --test-window 150 --step-size 300 \
+    2>&1 | tee results_14day.log
 ```
 
 **Key sections in output:**
+- Unified test window calculation (fairness verification)
+- Cross-horizon alignment confirmation
 - Data quality checks
 - Feature selection summary
-- Per-window results (8 models × 12 windows)
+- Per-window results (6-8 models × 10 windows per horizon)
 - Aggregated performance summary
-- Buy & Hold baseline comparison
+- Buy & Hold baseline comparison (should be identical across horizons)
 
 **Automatic JSON files saved to:**
 - `experiments/walk_forward_enhanced/enhanced_wf_{horizon}day_{timestamp}.json`
-- `experiments/walk_forward_enhanced/horizon_comparison_{timestamp}.csv` (multi-horizon tests)
+- `experiments/walk_forward_enhanced/enhanced_multi_horizon_comparison_{timestamp}.csv`
+
+**Verification of Fair Comparison:**
+At the end of multi-horizon tests, verify:
+- ✅ All horizons show IDENTICAL buy-and-hold returns
+- ✅ All horizons have SAME number of windows
+- ✅ Test periods are identical across all horizons
 
 #### Debugging & Validation Scripts
 

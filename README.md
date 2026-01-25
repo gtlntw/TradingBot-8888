@@ -319,16 +319,45 @@ trading_bot/
 ### Testing
 
 #### Enhanced Walk-Forward Testing (Recommended)
+
+**Cross-Horizon Fairness (2026-01-25):** All multi-horizon tests now ensure fair comparison:
+- ✅ All horizons test the SAME calendar period
+- ✅ All horizons use the SAME test window size
+- ✅ Buy-and-hold returns are IDENTICAL across all horizons
+- ✅ Cross-horizon comparisons are VALID
+
+**Production Testing Commands:**
 ```bash
-# Quick test with all 6 new features (1-day horizon, 12 windows)
-python scripts/walk_forward_test_enhanced.py --horizon 1 --quick
+# Full 10-year test with 10 windows (RECOMMENDED)
+python scripts/run_all_horizons_walk_forward.py \
+    --days 3650 --train-window 730 --test-window 150 --step-size 300 \
+    2>&1 | tee results_full_10windows.log
 
-# Full test across all horizons (1, 7, 14, 28, 60 days)
-python scripts/run_all_horizons_walk_forward.py
+# Quick verification without sequence models (~45-60 min)
+python scripts/run_all_horizons_walk_forward.py \
+    --days 3650 --train-window 730 --test-window 150 --step-size 300 \
+    --no-sequences \
+    2>&1 | tee results_quick_verification.log
 
-# Quick mode without sequence models (faster)
-python scripts/run_all_horizons_walk_forward.py --quick --no-sequences
+# Single horizon test (14-day example)
+python scripts/walk_forward_test_enhanced.py \
+    --horizon 14 --days 3650 --train-window 730 --test-window 150 --step-size 300 \
+    2>&1 | tee results_14day.log
+
+# Quick development test (3 years)
+python scripts/run_all_horizons_walk_forward.py --quick
 ```
+
+**What Gets Tested:**
+- 5 traditional models: Random Forest, XGBoost, LightGBM, LSTM, Transformer
+- 2 sequence models: lstm_60day, transformer_60day (with --sequences)
+- 1 ensemble: Sharpe-optimized voting with diversity constraints
+- Multiple prediction horizons: 1, 7, 14, 28, 60 days
+- 10 walk-forward windows with proper time-series validation
+
+**Expected Runtime:**
+- Quick verification (10 windows, no sequences): ~45-60 minutes
+- Full test (10 windows, with sequences): ~10-15 hours
 
 #### Unit & Integration Tests
 ```bash
@@ -342,7 +371,7 @@ pytest tests/integration/
 pytest --cov=trading_bot tests/
 ```
 
-**Note**: The enhanced walk-forward testing framework includes all 6 new features, normalization fixes, and proper time-series validation. See `CLAUDE.md` for detailed testing documentation.
+**Note**: The enhanced walk-forward testing framework includes all 6 new features, cross-horizon fairness fixes, normalization fixes, and proper time-series validation. See `CLAUDE.md` and `scripts/verify_cross_horizon_fix.py` for detailed testing documentation and verification.
 
 ## ⚠️ Disclaimer
 
