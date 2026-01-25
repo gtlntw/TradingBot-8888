@@ -10,6 +10,12 @@ Integrates all 6 priority improvements:
 5. Transaction Cost Sensitivity
 6. Profitability Target (not raw returns)
 
+CROSS-HORIZON COMPARISON FIX (2026-01-25):
+- Ensures all prediction horizons test the SAME calendar period
+- Collects extra buffer data (60 days) to account for target creation data loss
+- Truncates all horizons to common period for fair comparison
+- Result: Buy-and-hold returns should be identical across all horizons
+
 Usage:
     python scripts/walk_forward_test_enhanced.py --horizon 1 --days 2190
     python scripts/walk_forward_test_enhanced.py --horizon 1 --mode expanding --quick
@@ -48,6 +54,9 @@ from trading_bot.data.sequences import SequenceGenerator
 from trading_bot.models.sequence_models import SequenceLSTMModel, SequenceTransformerModel
 from trading_bot.evaluation.cost_sensitivity import CostSensitivityAnalyzer
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
+
+# Maximum prediction horizon across all tests (for fair cross-horizon comparison)
+MAX_PREDICTION_HORIZON = 60  # days
 
 
 class DataNormalizer:
@@ -577,11 +586,48 @@ class EnhancedWalkForwardTester:
         interval: str = '1d'
     ) -> Dict[str, Any]:
         """Run complete enhanced walk-forward test."""
+        # Collect extra data to ensure all horizons test the same calendar period
+        # (Different horizons lose different amounts when creating targets)
+        buffer_days = MAX_PREDICTION_HORIZON  # 60 days
+        total_days_to_collect = days + buffer_days
+
+        print(f"\n{'='*80}")
+        print(f"FAIR CROSS-HORIZON COMPARISON SETUP")
+        print(f"{'='*80}")
+        print(f"Base days requested: {days}")
+        print(f"Buffer for {buffer_days}-day horizon: +{buffer_days} days")
+        print(f"Total days to collect: {total_days_to_collect}")
+        print(f"This ensures all horizons test the SAME calendar period")
+        print(f"{'='*80}\n")
+
         # Collect and validate data
-        raw_data = await self.collect_data(days, interval)
+        raw_data = await self.collect_data(total_days_to_collect, interval)
 
         # Prepare data with feature selection
+        # NOTE: This creates targets by shifting -self.prediction_horizon
+        # which causes different horizons to lose different amounts of data
         prepared_data, selected_features = self.prepare_data(raw_data)
+
+        # CRITICAL FIX: Truncate to ensure all horizons test the same calendar period
+        # - 60-day horizon loses 60 days (can't predict last 60 days)
+        # - 1-day horizon loses 1 day (can't predict last 1 day)
+        # - We truncate all horizons to what 60-day would have
+        data_before_truncate = len(prepared_data)
+        days_lost_to_target_creation = self.prediction_horizon
+        additional_truncate = buffer_days - days_lost_to_target_creation
+
+        if additional_truncate > 0:
+            prepared_data = prepared_data.iloc[:-additional_truncate]
+            print(f"\n{'='*80}")
+            print(f"CROSS-HORIZON ALIGNMENT")
+            print(f"{'='*80}")
+            print(f"After target creation: {data_before_truncate} days")
+            print(f"  (Lost {days_lost_to_target_creation} days to {self.prediction_horizon}-day target)")
+            print(f"Truncating additional: {additional_truncate} days")
+            print(f"Final usable data: {len(prepared_data)} days")
+            print(f"Test period: {prepared_data.index[0].date()} to {prepared_data.index[-1].date()}")
+            print(f"✓ All horizons now test the SAME calendar period")
+            print(f"{'='*80}\n")
 
         # Split into windows
         windows = self.split_windows(prepared_data)
