@@ -256,11 +256,18 @@ class EnhancedWalkForwardTester:
         # Predict price direction (up/down), costs applied in backtesting
         future_return = (features_df['close'].shift(-self.prediction_horizon) /
                         features_df['close']) - 1
-        features_df['profitable_trade'] = (future_return > 0).astype(int)  # Simple: up or down?
+
+        # CRITICAL: Preserve NaN values from shift operation
+        # Don't use (future_return > 0).astype(int) because NaN > 0 = False, loses NaN!
+        # Instead: use where() to preserve NaN
+        features_df['profitable_trade'] = future_return.apply(lambda x: 1 if x > 0 else (0 if x <= 0 else None))
 
         print(f"  Before target dropna: {len(features_df)} records")
+        nan_count = features_df['profitable_trade'].isna().sum()
+        print(f"  NaN values in profitable_trade: {nan_count} (should be {self.prediction_horizon})")
+
         features_df = features_df.dropna(subset=['profitable_trade'])
-        print(f"  After target dropna (lost {self.prediction_horizon} to shift): {len(features_df)} records")
+        print(f"  After target dropna: {len(features_df)} records (lost {nan_count} rows)")
 
         profit_rate = features_df['profitable_trade'].mean()
         print(f"✓ Target: {profit_rate:.2%} up days (costs={self.transaction_cost:.2%} applied in backtest)")
