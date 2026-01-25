@@ -244,7 +244,10 @@ class EnhancedWalkForwardTester:
 
         # Feature engineering
         features_df = self.feature_engineer.create_features(cleaned_data)
+        print(f"  After feature engineering: {len(features_df)} records")
+
         features_df = features_df.fillna(method='ffill').fillna(method='bfill').dropna()
+        print(f"  After fillna/dropna: {len(features_df)} records")
 
         original_features = features_df.shape[1]
         print(f"✓ Features: {original_features} features, {len(features_df)} records")
@@ -254,7 +257,10 @@ class EnhancedWalkForwardTester:
         future_return = (features_df['close'].shift(-self.prediction_horizon) /
                         features_df['close']) - 1
         features_df['profitable_trade'] = (future_return > 0).astype(int)  # Simple: up or down?
+
+        print(f"  Before target dropna: {len(features_df)} records")
         features_df = features_df.dropna(subset=['profitable_trade'])
+        print(f"  After target dropna (lost {self.prediction_horizon} to shift): {len(features_df)} records")
 
         profit_rate = features_df['profitable_trade'].mean()
         print(f"✓ Target: {profit_rate:.2%} up days (costs={self.transaction_cost:.2%} applied in backtest)")
@@ -609,24 +615,49 @@ class EnhancedWalkForwardTester:
         prepared_data, selected_features = self.prepare_data(raw_data)
 
         # CRITICAL FIX: Truncate to ensure all horizons test the same calendar period
-        # - 60-day horizon loses 60 days (can't predict last 60 days)
-        # - 1-day horizon loses 1 day (can't predict last 1 day)
-        # - We truncate all horizons to what 60-day would have
+        # Problem: Different horizons lose different amounts when creating targets
+        #   - 60-day horizon: shift(-60) loses last 60 days
+        #   - 1-day horizon: shift(-1) loses last 1 day
+        # Solution: Truncate all horizons from the END to match what 60-day would have
+        #   - Calculate how much data 60-day horizon would have after its target creation
+        #   - Truncate all other horizons to match that length
+
         data_before_truncate = len(prepared_data)
         days_lost_to_target_creation = self.prediction_horizon
-        additional_truncate = buffer_days - days_lost_to_target_creation
 
-        if additional_truncate > 0:
-            prepared_data = prepared_data.iloc[:-additional_truncate]
+        # Target length: what we'd have if we used max horizon (60 days)
+        # We already collected (days + buffer), prepared_data already lost some to features + target
+        # To align all: truncate from the end by (buffer_days - days_lost_to_target_creation)
+        # But we need to truncate from the BEGINNING, not end, to keep recent data
+        # Actually, we want to keep the SAME date range, so truncate from END
+
+        # All horizons should have the same final data length as if they all used 60-day horizon
+        # prepared_data already has lost self.prediction_horizon days from the end
+        # To match 60-day: need to lose (60 - self.prediction_horizon) MORE days from the end
+        additional_days_to_remove = buffer_days - days_lost_to_target_creation
+
+        if additional_days_to_remove > 0:
+            # Truncate from the end to match 60-day horizon
+            prepared_data = prepared_data.iloc[:-additional_days_to_remove]
             print(f"\n{'='*80}")
             print(f"CROSS-HORIZON ALIGNMENT")
             print(f"{'='*80}")
-            print(f"After target creation: {data_before_truncate} days")
-            print(f"  (Lost {days_lost_to_target_creation} days to {self.prediction_horizon}-day target)")
-            print(f"Truncating additional: {additional_truncate} days")
-            print(f"Final usable data: {len(prepared_data)} days")
-            print(f"Test period: {prepared_data.index[0].date()} to {prepared_data.index[-1].date()}")
-            print(f"✓ All horizons now test the SAME calendar period")
+            print(f"After prepare_data: {data_before_truncate} days")
+            print(f"  (Already lost ~{days_lost_to_target_creation} days to target creation)")
+            print(f"Truncating {additional_days_to_remove} more days from END to match 60-day horizon")
+            print(f"Final aligned data: {len(prepared_data)} days")
+            print(f"Date range: {prepared_data.index[0].date()} to {prepared_data.index[-1].date()}")
+            print(f"✓ All horizons now have SAME length and date range")
+            print(f"{'='*80}\n")
+        elif additional_days_to_remove == 0:
+            # This IS the 60-day horizon, no truncation needed
+            print(f"\n{'='*80}")
+            print(f"CROSS-HORIZON ALIGNMENT")
+            print(f"{'='*80}")
+            print(f"This is {self.prediction_horizon}-day horizon (max horizon)")
+            print(f"No additional truncation needed")
+            print(f"Final data: {len(prepared_data)} days")
+            print(f"Date range: {prepared_data.index[0].date()} to {prepared_data.index[-1].date()}")
             print(f"{'='*80}\n")
 
         # Split into windows
