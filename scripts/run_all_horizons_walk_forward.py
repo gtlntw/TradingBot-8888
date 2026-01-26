@@ -16,6 +16,11 @@ CROSS-HORIZON FAIRNESS FIX (2026-01-25):
 - Prevents per-horizon adjustments that break comparison fairness
 - Result: Buy-and-hold returns identical, comparisons valid
 
+REALISTIC TRANSACTION COSTS (2026-01-25):
+- Default transaction cost: 0.2% (0.1% commission + 0.1% slippage)
+- Applied to ALL trades in backtesting
+- Ensures results reflect real-world trading profitability
+
 This script runs comprehensive walk-forward tests for all 5 horizons
 (1, 7, 14, 28, 60 days) and generates a comparison report.
 
@@ -234,8 +239,8 @@ def main():
                        help='Maximum age of existing results in hours for resume (default: 24)')
     parser.add_argument('--no-sequences', action='store_true',
                        help='Disable sequence models (LSTM/Transformer) for faster execution')
-    parser.add_argument('--transaction-cost', type=float, default=0.000,
-                       help='Transaction cost threshold (default: 0.000 = 0.0%%)')
+    parser.add_argument('--transaction-cost', type=float, default=0.002,
+                       help='Transaction cost threshold (default: 0.002 = 0.2%%)')
     parser.add_argument('--max-features', type=int, default=30,
                        help='Maximum features to select (default: 30)')
     parser.add_argument('--sequence-length', type=int, default=60,
@@ -267,6 +272,7 @@ def main():
     print(f"  Train Window: {args.train_window} days")
     print(f"  Test Window: {args.test_window} days")
     print(f"  Step Size: {args.step_size} days")
+    print(f"  Transaction Cost: {args.transaction_cost:.3f} ({args.transaction_cost*100:.1f}%)")
     if args.resume:
         print(f"  Resume: Enabled (max age: {args.max_age}h)")
     if args.force:

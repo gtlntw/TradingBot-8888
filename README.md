@@ -325,6 +325,7 @@ trading_bot/
 - ✅ All horizons use the SAME test window size
 - ✅ Buy-and-hold returns are IDENTICAL across all horizons
 - ✅ Cross-horizon comparisons are VALID
+- ✅ Realistic transaction costs: 0.2% default (0.1% commission + 0.1% slippage)
 
 **Production Testing Commands:**
 ```bash
@@ -346,6 +347,12 @@ python scripts/walk_forward_test_enhanced.py \
 
 # Quick development test (3 years)
 python scripts/run_all_horizons_walk_forward.py --quick
+
+# Test WITHOUT transaction costs (for comparison only)
+python scripts/run_all_horizons_walk_forward.py \
+    --days 3650 --train-window 730 --test-window 150 --step-size 300 \
+    --transaction-cost 0.0 \
+    2>&1 | tee results_no_costs.log
 ```
 
 **What Gets Tested:**

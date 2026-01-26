@@ -345,6 +345,7 @@ This script runs the enhanced walk-forward test across all 5 horizons (1, 7, 14,
 - ✅ All horizons use the SAME test window size (unified window fix)
 - ✅ Buy-and-hold returns are IDENTICAL across all horizons
 - ✅ Cross-horizon comparisons are now FAIR and VALID
+- ✅ Realistic transaction costs: 0.2% default (0.1% commission + 0.1% slippage)
 
 **Recommended Commands:**
 
