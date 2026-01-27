@@ -413,13 +413,16 @@ class Backtester(LoggerMixin):
         positions_history: List[int]
     ) -> Dict[str, Any]:
         """Create comprehensive backtest results."""
+        # Save actual number of executions BEFORE metrics calculation
+        actual_executions = len(self.portfolio.trades)
+
         results = {
             'strategy_name': strategy_name,
             'start_date': data.index[0],
             'end_date': data.index[-1],
             'initial_capital': self.initial_capital,
             'final_capital': equity_curve[-1] if equity_curve else self.initial_capital,
-            'total_trades': len(self.portfolio.trades)
+            'actual_trades': actual_executions  # Actual buy/sell executions
         }
 
         # Create time series
@@ -437,6 +440,9 @@ class Backtester(LoggerMixin):
                 returns_series,
                 prices=equity_series
             )
+
+            # Preserve actual trade count (PerformanceMetrics overwrites with return_periods)
+            results['metrics']['actual_trades'] = actual_executions
 
             # Add trading-specific metrics
             trades_df = self.portfolio.get_trades_df()

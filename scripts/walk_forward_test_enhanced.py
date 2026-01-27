@@ -560,7 +560,8 @@ class EnhancedWalkForwardTester:
                     'total_return': bt_metrics.get('total_return', 0),
                     'sharpe_ratio': bt_metrics.get('sharpe_ratio', 0),
                     'win_rate': bt_metrics.get('win_rate', 0),
-                    'num_trades': bt_metrics.get('total_trades', 0),
+                    'num_trades': bt_metrics.get('total_trades', 0),  # Number of return periods (days)
+                    'actual_trades': bt_metrics.get('actual_trades', 0),  # Actual buy/sell executions
                     'max_drawdown': bt_metrics.get('max_drawdown', 0)
                 }
 
@@ -584,7 +585,8 @@ class EnhancedWalkForwardTester:
                 'total_return': bh_return,
                 'sharpe_ratio': bh_sharpe,
                 'win_rate': (daily_returns > 0).mean(),
-                'num_trades': 1,
+                'num_trades': 1,  # Number of return periods (placeholder)
+                'actual_trades': 1,  # Buy once at start
                 'max_drawdown': 0
             }
             print(f"    ✓ buy_and_hold: Return={bh_return*100:+.2f}%")
