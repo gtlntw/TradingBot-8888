@@ -131,7 +131,6 @@ class EnhancedWalkForwardTester:
         step_size: int = 90,
         min_train_size: int = 365,
         use_sequences: bool = True,
-        transaction_cost: float = 0.002,
         max_features: int = 30,
         sequence_length: int = 60
     ):
@@ -146,7 +145,6 @@ class EnhancedWalkForwardTester:
             step_size: Days to step forward each iteration
             min_train_size: Minimum training data required
             use_sequences: Whether to train sequence models (LSTM/Transformer)
-            transaction_cost: Transaction cost threshold for profitability
             max_features: Maximum features to select
             sequence_length: Lookback window for sequence models
         """
@@ -157,7 +155,6 @@ class EnhancedWalkForwardTester:
         self.step_size = step_size
         self.min_train_size = min_train_size
         self.use_sequences = use_sequences
-        self.transaction_cost = transaction_cost
         self.max_features = max_features
         self.sequence_length = sequence_length
 
@@ -183,7 +180,7 @@ class EnhancedWalkForwardTester:
         print(f"🆕 NEW FEATURES ENABLED:")
         print(f"  ✓ Data Quality Validation")
         print(f"  ✓ Feature Selection ({max_features} features)")
-        print(f"  ✓ Profitability Target (cost={transaction_cost:.2%})")
+        print(f"  ✓ Profitability Target (binary: up/down)")
         print(f"  ✓ Sequence Models (lookback={sequence_length} days)" if use_sequences else "  - Sequence Models: DISABLED")
         print(f"  ✓ Cost Sensitivity Analysis")
         print(f"  ✓ Standardized Evaluation")
@@ -270,7 +267,7 @@ class EnhancedWalkForwardTester:
         print(f"  After target dropna: {len(features_df)} records (lost {nan_count} rows)")
 
         profit_rate = features_df['profitable_trade'].mean()
-        print(f"✓ Target: {profit_rate:.2%} up days (costs={self.transaction_cost:.2%} applied in backtest)")
+        print(f"✓ Target: {profit_rate:.2%} up days (backtester uses default 0.15% costs)")
 
         # NEW FEATURE #1: Feature Selection
         print(f"\n🎯 Selecting best {self.max_features} features...")
@@ -539,9 +536,8 @@ class EnhancedWalkForwardTester:
                 signals[pred_binary == 0] = -1   # Be in cash when not profitable
 
                 backtester = Backtester(
-                    initial_capital=100000,
-                    commission=self.transaction_cost / 2,  # Half of cost
-                    slippage=self.transaction_cost / 2      # Other half
+                    initial_capital=100000
+                    # Uses default: commission=0.001 (0.1%), slippage=0.0005 (0.05%)
                 )
 
                 backtest_results = backtester.run_backtest(
@@ -740,7 +736,6 @@ class EnhancedWalkForwardTester:
                 'step_size': self.step_size,
                 'num_windows': len(windows),
                 'use_sequences': self.use_sequences,
-                'transaction_cost': self.transaction_cost,
                 'max_features': self.max_features,
                 'sequence_length': self.sequence_length,
                 'selected_features': selected_features
@@ -828,8 +823,6 @@ async def main():
                        help='Step size in days (default: 90)')
     parser.add_argument('--no-sequences', action='store_true',
                        help='Disable sequence models (faster)')
-    parser.add_argument('--transaction-cost', type=float, default=0.002,
-                       help='Transaction cost threshold (default: 0.002 = 0.2%%)')
     parser.add_argument('--max-features', type=int, default=30,
                        help='Maximum features to select (default: 30)')
     parser.add_argument('--sequence-length', type=int, default=60,
@@ -861,7 +854,6 @@ async def main():
         test_window=args.test_window,
         step_size=args.step_size,
         use_sequences=not args.no_sequences,
-        transaction_cost=args.transaction_cost,
         max_features=args.max_features,
         sequence_length=args.sequence_length
     )

@@ -16,8 +16,8 @@ CROSS-HORIZON FAIRNESS FIX (2026-01-25):
 - Prevents per-horizon adjustments that break comparison fairness
 - Result: Buy-and-hold returns identical, comparisons valid
 
-REALISTIC TRANSACTION COSTS (2026-01-25):
-- Default transaction cost: 0.2% (0.1% commission + 0.1% slippage)
+REALISTIC TRANSACTION COSTS (2026-01-27):
+- Uses backtester defaults: 0.1% commission + 0.05% slippage = 0.15% per trade
 - Applied to ALL trades in backtesting
 - Ensures results reflect real-world trading profitability
 
@@ -113,7 +113,6 @@ def run_walk_forward(horizon: int, args: argparse.Namespace, unified_test_window
         '--train-window', str(args.train_window),
         '--test-window', str(unified_test_window),  # Use unified window!
         '--step-size', str(args.step_size),
-        '--transaction-cost', str(args.transaction_cost),
         '--max-features', str(args.max_features),
         '--sequence-length', str(args.sequence_length)
     ]
@@ -239,8 +238,6 @@ def main():
                        help='Maximum age of existing results in hours for resume (default: 24)')
     parser.add_argument('--no-sequences', action='store_true',
                        help='Disable sequence models (LSTM/Transformer) for faster execution')
-    parser.add_argument('--transaction-cost', type=float, default=0.002,
-                       help='Transaction cost threshold (default: 0.002 = 0.2%%)')
     parser.add_argument('--max-features', type=int, default=30,
                        help='Maximum features to select (default: 30)')
     parser.add_argument('--sequence-length', type=int, default=60,
@@ -260,7 +257,7 @@ def main():
     print(f"{'='*80}")
     print(f"🆕 NEW FEATURES ENABLED:")
     print(f"  ✓ Feature Selection (max {args.max_features} features)")
-    print(f"  ✓ Profitability Target (cost={args.transaction_cost:.2%})")
+    print(f"  ✓ Profitability Target (binary: up/down)")
     print(f"  ✓ Sequence Models (lookback={args.sequence_length})" if not args.no_sequences else "  - Sequence Models: DISABLED")
     print(f"  ✓ Data Quality Validation")
     print(f"  ✓ Cost Sensitivity Analysis")
@@ -272,7 +269,7 @@ def main():
     print(f"  Train Window: {args.train_window} days")
     print(f"  Test Window: {args.test_window} days")
     print(f"  Step Size: {args.step_size} days")
-    print(f"  Transaction Cost: {args.transaction_cost:.3f} ({args.transaction_cost*100:.1f}%)")
+    print(f"  Transaction Cost: 0.15% (backtester default: 0.1% commission + 0.05% slippage)")
     if args.resume:
         print(f"  Resume: Enabled (max age: {args.max_age}h)")
     if args.force:
