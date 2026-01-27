@@ -532,10 +532,11 @@ class EnhancedWalkForwardTester:
                 }
 
                 # Run backtest - Convert predictions to trading signals
+                # Binary prediction: 1 = profitable (go long), 0 = not profitable (be in cash)
+                # Backtester signals: 1 = long, -1 = cash/short, 0 = hold current position
                 signals = pd.Series(0, index=aligned_prices.index)
-                # Use the binary predictions we already calculated
-                signals[pred_binary == 1] = 1   # Buy when profitable
-                signals[pred_binary == 0] = 0   # Hold cash when not profitable
+                signals[pred_binary == 1] = 1    # Be long when profitable
+                signals[pred_binary == 0] = -1   # Be in cash when not profitable
 
                 backtester = Backtester(
                     initial_capital=100000,
