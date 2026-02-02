@@ -127,12 +127,13 @@ class EnhancedWalkForwardTester:
         prediction_horizon: int = 1,
         mode: str = 'expanding',
         train_window: int = 730,
-        test_window: int = 90,
-        step_size: int = 90,
+        num_windows: int = None,
+        window_size: int = None,
         min_train_size: int = 365,
         use_sequences: bool = True,
         max_features: int = 30,
-        sequence_length: int = 60
+        sequence_length: int = 60,
+        total_days: int = None
     ):
         """
         Initialize enhanced walk-forward tester.
@@ -141,22 +142,46 @@ class EnhancedWalkForwardTester:
             prediction_horizon: Days ahead to predict
             mode: 'expanding' or 'rolling' window
             train_window: Initial/fixed training window size (days)
-            test_window: Test window size (days)
-            step_size: Days to step forward each iteration
+            num_windows: Number of non-overlapping test windows (specify this OR window_size)
+            window_size: Size of each test window in days (specify this OR num_windows)
             min_train_size: Minimum training data required
             use_sequences: Whether to train sequence models (LSTM/Transformer)
             max_features: Maximum features to select
             sequence_length: Lookback window for sequence models
+            total_days: Total days of data available
         """
         self.prediction_horizon = prediction_horizon
         self.mode = mode
         self.train_window = train_window
-        self.test_window = test_window
-        self.step_size = step_size
         self.min_train_size = min_train_size
         self.use_sequences = use_sequences
         self.max_features = max_features
         self.sequence_length = sequence_length
+
+        # Calculate window configuration (no gaps!)
+        if num_windows and window_size:
+            raise ValueError("Specify EITHER --num-windows OR --window-size, not both")
+
+        if not num_windows and not window_size:
+            raise ValueError("Must specify either --num-windows or --window-size")
+
+        if total_days is None:
+            raise ValueError("total_days required")
+
+        available_days = total_days - train_window
+
+        if num_windows:
+            # User wants specific number of windows
+            calculated_window_size = available_days // num_windows
+            self.test_window = calculated_window_size
+            self.step_size = calculated_window_size  # No gaps!
+            print(f"✓ {num_windows} windows × {calculated_window_size} days = {num_windows * calculated_window_size} days tested (no gaps)")
+        else:
+            # User wants specific window size
+            calculated_num_windows = available_days // window_size
+            self.test_window = window_size
+            self.step_size = window_size  # No gaps!
+            print(f"✓ {calculated_num_windows} windows × {window_size} days = {calculated_num_windows * window_size} days tested (no gaps)")
 
         self.settings = Settings()
         self.collector = DataCollector(self.settings)
@@ -187,8 +212,8 @@ class EnhancedWalkForwardTester:
         print(f"\nConfiguration:")
         print(f"  Mode: {mode.upper()}")
         print(f"  Train Window: {train_window} days")
-        print(f"  Test Window: {test_window} days")
-        print(f"  Step Size: {step_size} days")
+        print(f"  Test Window: {self.test_window} days")
+        print(f"  Step Size: {self.step_size} days")
         print(f"{'='*80}\n")
 
     async def collect_data(self, days: int, interval: str = '1d') -> pd.DataFrame:
@@ -817,10 +842,10 @@ async def main():
                        help='Window mode: expanding or rolling')
     parser.add_argument('--train-window', type=int, default=730,
                        help='Training window size in days (default: 730)')
-    parser.add_argument('--test-window', type=int, default=90,
-                       help='Test window size in days (default: 90)')
-    parser.add_argument('--step-size', type=int, default=90,
-                       help='Step size in days (default: 90)')
+    parser.add_argument('--num-windows', type=int, default=None,
+                       help='Number of non-overlapping test windows (e.g., 10)')
+    parser.add_argument('--window-size', type=int, default=None,
+                       help='Size of each test window in days (e.g., 150) - alternative to --num-windows')
     parser.add_argument('--no-sequences', action='store_true',
                        help='Disable sequence models (faster)')
     parser.add_argument('--max-features', type=int, default=30,
@@ -838,9 +863,14 @@ async def main():
     if args.quick:
         args.days = 1095  # 3 years
         args.train_window = 365
-        args.test_window = 60
-        args.step_size = 60
+        args.num_windows = 10
+        args.window_size = None
         args.sequence_length = 30
+
+    # Default to 10 windows if nothing specified
+    if args.num_windows is None and args.window_size is None:
+        print("ℹ️  No window configuration specified, defaulting to --num-windows 10")
+        args.num_windows = 10
 
     # Create output directory
     output_dir = Path(args.output)
@@ -851,11 +881,12 @@ async def main():
         prediction_horizon=args.horizon,
         mode=args.mode,
         train_window=args.train_window,
-        test_window=args.test_window,
-        step_size=args.step_size,
+        num_windows=args.num_windows,
+        window_size=args.window_size,
         use_sequences=not args.no_sequences,
         max_features=args.max_features,
-        sequence_length=args.sequence_length
+        sequence_length=args.sequence_length,
+        total_days=args.days
     )
 
     # Run enhanced walk-forward test

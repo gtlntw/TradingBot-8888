@@ -111,11 +111,16 @@ def run_walk_forward(horizon: int, args: argparse.Namespace, unified_test_window
         '--days', str(args.days),
         '--mode', args.mode,
         '--train-window', str(args.train_window),
-        '--test-window', str(unified_test_window),  # Use unified window!
-        '--step-size', str(args.step_size),
         '--max-features', str(args.max_features),
         '--sequence-length', str(args.sequence_length)
     ]
+
+    # NEW INTERFACE: Use num_windows or window_size (mutually exclusive)
+    if args.num_windows is not None:
+        cmd.extend(['--num-windows', str(args.num_windows)])
+    elif args.window_size is not None:
+        cmd.extend(['--window-size', str(args.window_size)])
+    # Note: If neither specified, walk_forward_test_enhanced.py defaults to 10 windows
 
     # Add optional flags
     if args.no_sequences:
@@ -222,10 +227,13 @@ def main():
                        help='Window mode (default: expanding)')
     parser.add_argument('--train-window', type=int, default=730,
                        help='Training window size in days (default: 730)')
-    parser.add_argument('--test-window', type=int, default=90,
-                       help='Test window size in days (default: 90)')
-    parser.add_argument('--step-size', type=int, default=90,
-                       help='Step size in days (default: 90)')
+
+    # NEW INTERFACE (recommended) - mutually exclusive
+    parser.add_argument('--num-windows', type=int, default=10,
+                       help='Number of non-overlapping test windows (default: 10) - NEW, recommended')
+    parser.add_argument('--window-size', type=int, default=None,
+                       help='Size of each test window in days (alternative to --num-windows)')
+
     parser.add_argument('--quick', action='store_true',
                        help='Quick test with smaller dataset')
     parser.add_argument('--horizons', type=int, nargs='+', default=[1, 7, 14, 28, 60],
