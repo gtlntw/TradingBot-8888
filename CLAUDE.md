@@ -347,26 +347,52 @@ This script runs the enhanced walk-forward test across all 5 horizons (1, 7, 14,
 - ✅ Cross-horizon comparisons are now FAIR and VALID
 - ✅ Realistic transaction costs: 0.2% default (0.1% commission + 0.1% slippage)
 
+**CRITICAL (2026-02-02):** Walk-forward interface redesigned to prevent gaps:
+- ⚠️ **Previous interface flaw**: Old `--test-window 150 --step-size 300` created 150-day GAPS
+- ⚠️ **Impact**: Buy-and-hold baseline was invalid (jumped in/out, not continuous holding)
+- ⚠️ **Example**: Reported buy-and-hold: -0.68%, TRUE continuous buy-and-hold: +692.98% (Dec 2017 - Sep 2025)
+- ✅ **New interface**: `--num-windows 10` OR `--window-size 150` (mutually exclusive)
+- ✅ **Gap prevention**: step_size automatically equals window_size (no gaps possible)
+- ✅ **Continuous coverage**: All test windows now touch without gaps or overlap
+- 📊 **Implications**: Model returns must now be compared to CONTINUOUS buy-and-hold baseline
+- 📊 **Previous results**: All tests before 2026-02-02 have invalid baselines (gaps present)
+
+**New Interface:**
+```bash
+# Specify number of windows (RECOMMENDED - speeds up testing)
+python scripts/walk_forward_test_enhanced.py --num-windows 10
+
+# OR specify window size (for specific period length)
+python scripts/walk_forward_test_enhanced.py --window-size 150
+
+# Script automatically calculates: step_size = window_size (no gaps!)
+# Output: "✓ 10 windows × 292 days = 2920 days tested (no gaps)"
+```
+
 **Recommended Commands:**
 
 ```bash
-# Full 10-year test with 10 windows (PRODUCTION)
+# Full 10-year test with 10 windows (PRODUCTION - RECOMMENDED)
 python scripts/run_all_horizons_walk_forward.py \
-    --days 3650 --train-window 730 --test-window 150 --step-size 300 \
+    --days 3650 --train-window 730 --num-windows 10 \
     2>&1 | tee results_full_10windows.log
 
 # Quick verification without sequences (~45-60 min)
 python scripts/run_all_horizons_walk_forward.py \
-    --days 3650 --train-window 730 --test-window 150 --step-size 300 \
+    --days 3650 --train-window 730 --num-windows 10 \
     --no-sequences \
     2>&1 | tee results_quick_verification.log
 
 # Quick mode (3 years, faster, for testing)
 python scripts/run_all_horizons_walk_forward.py --quick
 
-# Custom configuration
+# Custom: Specify window size instead of count
 python scripts/run_all_horizons_walk_forward.py \
-    --days 2190 --train-window 365 --test-window 150 --step-size 200
+    --days 2190 --train-window 365 --window-size 150
+
+# Custom: More windows for granular testing
+python scripts/run_all_horizons_walk_forward.py \
+    --days 3650 --train-window 730 --num-windows 20
 ```
 
 **What it does:**
@@ -396,20 +422,20 @@ All tests create comprehensive logs and can save results:
 ```bash
 # Recommended: Use tee to see output AND save to file
 
-# Full 10-year multi-horizon test
+# Full 10-year multi-horizon test (10 windows, no gaps)
 python scripts/run_all_horizons_walk_forward.py \
-    --days 3650 --train-window 730 --test-window 150 --step-size 300 \
+    --days 3650 --train-window 730 --num-windows 10 \
     2>&1 | tee results_full_10windows.log
 
-# Quick verification test
+# Quick verification test (no sequences)
 python scripts/run_all_horizons_walk_forward.py \
-    --days 3650 --train-window 730 --test-window 150 --step-size 300 \
+    --days 3650 --train-window 730 --num-windows 10 \
     --no-sequences \
     2>&1 | tee results_quick_verification.log
 
-# Single horizon test
+# Single horizon test (14-day prediction)
 python scripts/walk_forward_test_enhanced.py \
-    --horizon 14 --days 3650 --train-window 730 --test-window 150 --step-size 300 \
+    --horizon 14 --days 3650 --train-window 730 --num-windows 10 \
     2>&1 | tee results_14day.log
 ```
 
@@ -528,9 +554,9 @@ Generating visualizations...
 
 **Integration with Testing Workflow:**
 ```bash
-# 1. Run multi-horizon test
+# 1. Run multi-horizon test (10 windows, no gaps)
 python scripts/run_all_horizons_walk_forward.py \
-    --days 3650 --train-window 730 --test-window 150 --step-size 300 \
+    --days 3650 --train-window 730 --num-windows 10 \
     2>&1 | tee results_full_10windows.log
 
 # 2. Automatically visualize latest results
@@ -543,6 +569,8 @@ python scripts/visualize_window_performance.py --timestamp 20260202_043229
 #### Architecture Documentation
 
 For deeper understanding, see the `docs/` directory:
+- **`docs/CRITICAL_SIGNAL_BUG_FIX.md`** - ⚠️ CRITICAL: Signal semantics bug (all results before 2026-01-27 invalid)
+- **`docs/TRADE_COUNT_FIX.md`** - Trade count confusion and signal semantics issue
 - **`docs/NORMALIZATION_ARCHITECTURE.md`** - Why normalization is in test script
 - **`docs/SEQUENCE_MODEL_FIX.md`** - Degenerate model investigation & fix
 - **`docs/COST_ACCOUNTING_ISSUE.md`** - Transaction cost double-counting issue
@@ -552,6 +580,11 @@ For deeper understanding, see the `docs/` directory:
 - **`docs/TRANSFORMER_FIX_SUMMARY.md`** - Transformer model improvements
 - **`docs/EXPERIMENT_STATUS.md`** - Current experiment status and results
 - **`CLAUDE.md`** - This file (you're reading it!)
+
+**⚠️ IMPORTANT TIMELINE:**
+- **Before 2026-01-27**: All results INVALID due to signal semantics bug (models didn't trade on predictions)
+- **2026-01-27 - 2026-02-02**: Results valid but baseline comparisons INVALID due to gaps in test windows
+- **After 2026-02-02**: All results valid with continuous buy-and-hold baseline
 
 ---
 
