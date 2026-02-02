@@ -107,7 +107,7 @@ experiments/results/*/
 experiments/reports/*.csv
 experiments/reports/*.json
 experiments/walk_forward/
-experiments/walk_forward_enhanced/*.json
+experiments/walk_forward_enhanced/*.png
 !experiments/results/.gitkeep
 !experiments/reports/.gitkeep
 

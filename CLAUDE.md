@@ -440,6 +440,106 @@ Several debugging scripts are available:
 - `scripts/test_normalization_fix.py` - Validates normalization fix
 - `scripts/test_standardscaler.py` - Tests StandardScaler consistency
 
+#### Visualization & Results Analysis
+
+**Primary Script:** `scripts/visualize_window_performance.py`
+
+This script generates comprehensive visualizations from walk-forward test results. It creates 5 different plot types to analyze model performance across all prediction horizons.
+
+**Basic Usage:**
+```bash
+# Use latest results (default - automatically finds most recent files)
+python scripts/visualize_window_performance.py
+
+# Use specific timestamp for all horizons
+python scripts/visualize_window_performance.py --timestamp 20260202_043229
+
+# Use specific result files
+python scripts/visualize_window_performance.py --files \
+    experiments/walk_forward_enhanced/enhanced_wf_1day_20260201_195228.json \
+    experiments/walk_forward_enhanced/enhanced_wf_7day_20260201_223336.json \
+    experiments/walk_forward_enhanced/enhanced_wf_14day_20260202_020443.json
+
+# Custom output directory
+python scripts/visualize_window_performance.py --output-dir my_plots/
+```
+
+**Command-Line Options:**
+- `--timestamp YYYYMMDD_HHMMSS` - Load all horizons from a specific experiment run
+- `--files FILE1 FILE2 ...` - Specify exact result files to visualize
+- `--output-dir DIR` - Where to save plots (default: `experiments/walk_forward_enhanced/`)
+- No arguments = Automatically uses the latest result files (sorted by modification time)
+
+**Generated Visualizations:**
+
+1. **`heatmap_all_horizons.png`** - Heatmap showing per-window returns (%) for all models across all horizons
+   - Color-coded: Green (positive), Red (negative), White (neutral)
+   - Shows consistency patterns across 10 walk-forward windows
+   - Includes all models: traditional (RF, XGB, LGB, LSTM, Transformer), ensemble, sequences, and buy-and-hold
+
+2. **`line_chart_top_models.png`** - Line charts of top 3 performing models per horizon
+   - One subplot per horizon (1, 7, 14, 28, 60 days)
+   - Compares best models against buy-and-hold baseline
+   - Shows per-window performance trends
+
+3. **`boxplot_consistency.png`** - Box plots showing return distribution across windows
+   - Visualizes median, quartiles, and outliers for each model
+   - Helps identify consistent vs volatile models
+   - Separate subplot for each horizon
+
+4. **`sequence_vs_traditional.png`** - Direct comparison of sequence models vs traditional models
+   - Best traditional model vs lstm_60day vs transformer_60day
+   - Shows whether raw OHLCV sequences outperform engineered features
+   - Includes buy-and-hold baseline
+
+5. **`win_loss_pattern.png`** - Win/loss heatmap for top 5 models
+   - Green = profitable window, Red = unprofitable window
+   - Visualizes which windows were challenging across horizons
+   - Helps identify time periods where models struggle
+
+**Expected Output:**
+```
+================================================================================
+VISUALIZING WINDOW PERFORMANCE
+================================================================================
+
+Loading latest result files:
+  1-day: enhanced_wf_1day_20260201_195228.json
+  7-day: enhanced_wf_7day_20260201_223336.json
+  14-day: enhanced_wf_14day_20260202_020443.json
+  28-day: enhanced_wf_28day_20260202_034544.json
+  60-day: enhanced_wf_60day_20260202_043218.json
+
+✓ Loaded data for 5 horizons
+
+Generating visualizations...
+✓ Saved: heatmap_all_horizons.png
+✓ Saved: line_chart_top_models.png
+✓ Saved: boxplot_consistency.png
+✓ Saved: sequence_vs_traditional.png
+✓ Saved: win_loss_pattern.png
+```
+
+**Use Cases:**
+- **After full testing run**: Visualize complete multi-horizon results
+- **Compare experiments**: Use `--timestamp` to compare specific experiment runs
+- **Quick analysis**: Default mode shows latest results immediately
+- **Custom analysis**: Use `--files` to cherry-pick specific horizons or experiments
+
+**Integration with Testing Workflow:**
+```bash
+# 1. Run multi-horizon test
+python scripts/run_all_horizons_walk_forward.py \
+    --days 3650 --train-window 730 --test-window 150 --step-size 300 \
+    2>&1 | tee results_full_10windows.log
+
+# 2. Automatically visualize latest results
+python scripts/visualize_window_performance.py
+
+# 3. Or visualize specific run by timestamp
+python scripts/visualize_window_performance.py --timestamp 20260202_043229
+```
+
 #### Architecture Documentation
 
 For deeper understanding, see the `docs/` directory:

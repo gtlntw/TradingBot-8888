@@ -14,26 +14,83 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import pandas as pd
 import numpy as np
+import argparse
 from pathlib import Path
+from datetime import datetime
 
 # Set style
 sns.set_style("whitegrid")
 plt.rcParams['figure.figsize'] = (16, 10)
 
-def load_results():
-    """Load all JSON results files."""
+def get_latest_files(base_dir='experiments/walk_forward_enhanced'):
+    """Get the latest result files for each horizon."""
+    horizons = [1, 7, 14, 28, 60]
+    latest_files = {}
+
+    for horizon in horizons:
+        pattern = f'{base_dir}/enhanced_wf_{horizon}day_*.json'
+        files = glob.glob(pattern)
+
+        if files:
+            # Sort by modification time, get the latest
+            latest_files[horizon] = max(files, key=lambda f: Path(f).stat().st_mtime)
+
+    return latest_files
+
+def load_results_from_timestamp(timestamp, base_dir='experiments/walk_forward_enhanced'):
+    """Load results for all horizons from a specific timestamp."""
     horizons = [1, 7, 14, 28, 60]
     all_data = {}
 
     for horizon in horizons:
-        pattern = f'experiments/walk_forward_enhanced/enhanced_wf_{horizon}day_*.json'
-        files = glob.glob(pattern)
-
-        if files:
-            with open(files[0], 'r') as f:
+        filepath = f'{base_dir}/enhanced_wf_{horizon}day_{timestamp}.json'
+        if Path(filepath).exists():
+            with open(filepath, 'r') as f:
                 all_data[horizon] = json.load(f)
+        else:
+            print(f"⚠ Warning: No file found for {horizon}-day horizon with timestamp {timestamp}")
 
     return all_data
+
+def load_results_from_files(file_dict):
+    """Load results from specific file paths."""
+    all_data = {}
+
+    for horizon, filepath in file_dict.items():
+        if Path(filepath).exists():
+            with open(filepath, 'r') as f:
+                all_data[horizon] = json.load(f)
+        else:
+            print(f"⚠ Warning: File not found: {filepath}")
+
+    return all_data
+
+def load_results(args=None):
+    """Load all JSON results files based on provided arguments."""
+    if args and args.files:
+        # Load specific files provided by user
+        file_dict = {}
+        for filepath in args.files:
+            # Extract horizon from filename
+            for h in [1, 7, 14, 28, 60]:
+                if f'{h}day' in filepath:
+                    file_dict[h] = filepath
+                    break
+        return load_results_from_files(file_dict)
+
+    elif args and args.timestamp:
+        # Load all horizons from specific timestamp
+        return load_results_from_timestamp(args.timestamp)
+
+    else:
+        # Default: load latest files
+        latest_files = get_latest_files()
+        if latest_files:
+            print("Loading latest result files:")
+            for horizon, filepath in sorted(latest_files.items()):
+                print(f"  {horizon}-day: {Path(filepath).name}")
+            print()
+        return load_results_from_files(latest_files)
 
 def extract_window_returns(data, horizon):
     """Extract per-window returns for all models."""
@@ -50,7 +107,7 @@ def extract_window_returns(data, horizon):
 
     return window_returns
 
-def plot_all_horizons_heatmap(all_data):
+def plot_all_horizons_heatmap(all_data, output_dir='experiments/walk_forward_enhanced'):
     """Create heatmap showing returns across windows and horizons."""
     fig, axes = plt.subplots(2, 3, figsize=(20, 12))
     fig.suptitle('Per-Window Returns by Horizon and Model (% Return)', fontsize=16, fontweight='bold')
@@ -92,11 +149,12 @@ def plot_all_horizons_heatmap(all_data):
     axes[1, 2].axis('off')
 
     plt.tight_layout()
-    plt.savefig('experiments/walk_forward_enhanced/heatmap_all_horizons.png', dpi=300, bbox_inches='tight')
+    output_path = f'{output_dir}/heatmap_all_horizons.png'
+    plt.savefig(output_path, dpi=300, bbox_inches='tight')
     print("✓ Saved: heatmap_all_horizons.png")
     plt.close()
 
-def plot_top_models_by_horizon(all_data):
+def plot_top_models_by_horizon(all_data, output_dir='experiments/walk_forward_enhanced'):
     """Plot line charts for top 3 models per horizon."""
     fig, axes = plt.subplots(2, 3, figsize=(20, 12))
     fig.suptitle('Top 3 Models Performance Across Windows', fontsize=16, fontweight='bold')
@@ -144,11 +202,12 @@ def plot_top_models_by_horizon(all_data):
     axes[1, 2].axis('off')
 
     plt.tight_layout()
-    plt.savefig('experiments/walk_forward_enhanced/line_chart_top_models.png', dpi=300, bbox_inches='tight')
+    output_path = f'{output_dir}/line_chart_top_models.png'
+    plt.savefig(output_path, dpi=300, bbox_inches='tight')
     print("✓ Saved: line_chart_top_models.png")
     plt.close()
 
-def plot_model_consistency(all_data):
+def plot_model_consistency(all_data, output_dir='experiments/walk_forward_enhanced'):
     """Plot box plots showing return distribution across windows."""
     fig, axes = plt.subplots(2, 3, figsize=(20, 12))
     fig.suptitle('Return Distribution Across 10 Windows (Box Plots)', fontsize=16, fontweight='bold')
@@ -195,11 +254,12 @@ def plot_model_consistency(all_data):
     axes[1, 2].axis('off')
 
     plt.tight_layout()
-    plt.savefig('experiments/walk_forward_enhanced/boxplot_consistency.png', dpi=300, bbox_inches='tight')
+    output_path = f'{output_dir}/boxplot_consistency.png'
+    plt.savefig(output_path, dpi=300, bbox_inches='tight')
     print("✓ Saved: boxplot_consistency.png")
     plt.close()
 
-def plot_sequence_vs_traditional(all_data):
+def plot_sequence_vs_traditional(all_data, output_dir='experiments/walk_forward_enhanced'):
     """Compare sequence models vs traditional models."""
     fig, axes = plt.subplots(2, 3, figsize=(20, 10))
     fig.suptitle('Sequence Models vs Traditional Models (Per Window)', fontsize=16, fontweight='bold')
@@ -250,11 +310,12 @@ def plot_sequence_vs_traditional(all_data):
     axes[1, 2].axis('off')
 
     plt.tight_layout()
-    plt.savefig('experiments/walk_forward_enhanced/sequence_vs_traditional.png', dpi=300, bbox_inches='tight')
+    output_path = f'{output_dir}/sequence_vs_traditional.png'
+    plt.savefig(output_path, dpi=300, bbox_inches='tight')
     print("✓ Saved: sequence_vs_traditional.png")
     plt.close()
 
-def plot_win_loss_analysis(all_data):
+def plot_win_loss_analysis(all_data, output_dir='experiments/walk_forward_enhanced'):
     """Plot win/loss patterns across windows."""
     fig, axes = plt.subplots(2, 3, figsize=(20, 10))
     fig.suptitle('Win/Loss Pattern Across Windows (Green=Win, Red=Loss)', fontsize=16, fontweight='bold')
@@ -292,36 +353,79 @@ def plot_win_loss_analysis(all_data):
     axes[1, 2].axis('off')
 
     plt.tight_layout()
-    plt.savefig('experiments/walk_forward_enhanced/win_loss_pattern.png', dpi=300, bbox_inches='tight')
+    output_path = f'{output_dir}/win_loss_pattern.png'
+    plt.savefig(output_path, dpi=300, bbox_inches='tight')
     print("✓ Saved: win_loss_pattern.png")
     plt.close()
 
 def main():
+    parser = argparse.ArgumentParser(
+        description='Visualize walk-forward test results across all horizons',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  # Use latest results (default)
+  python scripts/visualize_window_performance.py
+
+  # Use specific timestamp for all horizons
+  python scripts/visualize_window_performance.py --timestamp 20260202_043229
+
+  # Use specific files
+  python scripts/visualize_window_performance.py --files \\
+      experiments/walk_forward_enhanced/enhanced_wf_1day_20260201_195228.json \\
+      experiments/walk_forward_enhanced/enhanced_wf_7day_20260201_223336.json
+        """
+    )
+
+    parser.add_argument(
+        '--timestamp',
+        type=str,
+        help='Load all horizons from specific timestamp (e.g., 20260202_043229)'
+    )
+
+    parser.add_argument(
+        '--files',
+        nargs='+',
+        help='Specific result files to visualize'
+    )
+
+    parser.add_argument(
+        '--output-dir',
+        default='experiments/walk_forward_enhanced',
+        help='Output directory for plots (default: experiments/walk_forward_enhanced)'
+    )
+
+    args = parser.parse_args()
+
     print("\n" + "="*80)
     print("VISUALIZING WINDOW PERFORMANCE")
     print("="*80 + "\n")
 
     # Load data
-    print("Loading results...")
-    all_data = load_results()
+    all_data = load_results(args)
+
+    if not all_data:
+        print("❌ Error: No data loaded. Check your file paths or timestamp.")
+        return
+
     print(f"✓ Loaded data for {len(all_data)} horizons\n")
 
     # Create output directory
-    Path('experiments/walk_forward_enhanced').mkdir(parents=True, exist_ok=True)
+    Path(args.output_dir).mkdir(parents=True, exist_ok=True)
 
     # Generate visualizations
     print("Generating visualizations...")
 
-    plot_all_horizons_heatmap(all_data)
-    plot_top_models_by_horizon(all_data)
-    plot_model_consistency(all_data)
-    plot_sequence_vs_traditional(all_data)
-    plot_win_loss_analysis(all_data)
+    plot_all_horizons_heatmap(all_data, args.output_dir)
+    plot_top_models_by_horizon(all_data, args.output_dir)
+    plot_model_consistency(all_data, args.output_dir)
+    plot_sequence_vs_traditional(all_data, args.output_dir)
+    plot_win_loss_analysis(all_data, args.output_dir)
 
     print("\n" + "="*80)
     print("VISUALIZATION COMPLETE")
     print("="*80)
-    print("\nGenerated files in experiments/walk_forward_enhanced/:")
+    print(f"\nGenerated files in {args.output_dir}/:")
     print("  1. heatmap_all_horizons.png        - Heatmap of all returns")
     print("  2. line_chart_top_models.png       - Top 3 models per horizon")
     print("  3. boxplot_consistency.png         - Return distribution")
