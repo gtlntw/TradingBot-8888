@@ -115,12 +115,9 @@ def run_walk_forward(horizon: int, args: argparse.Namespace, unified_test_window
         '--sequence-length', str(args.sequence_length)
     ]
 
-    # NEW INTERFACE: Use num_windows or window_size (mutually exclusive)
-    if args.num_windows is not None:
-        cmd.extend(['--num-windows', str(args.num_windows)])
-    elif args.window_size is not None:
-        cmd.extend(['--window-size', str(args.window_size)])
-    # Note: If neither specified, walk_forward_test_enhanced.py defaults to 10 windows
+    # CRITICAL: Use unified_test_window to ensure ALL horizons use same window size
+    # This is essential for fair cross-horizon comparison
+    cmd.extend(['--window-size', str(unified_test_window)])
 
     # Add optional flags
     if args.no_sequences:
@@ -257,8 +254,26 @@ def main():
     if args.quick:
         args.days = 1095  # 3 years
         args.train_window = 365
-        args.test_window = 60
-        args.step_size = 60
+        args.num_windows = 12  # Quick mode: 12 windows for faster testing
+
+    # Calculate window_size from num_windows or vice versa
+    if args.num_windows and args.window_size:
+        raise ValueError("Specify EITHER --num-windows OR --window-size, not both")
+
+    if not args.num_windows and not args.window_size:
+        # Default to 10 windows if nothing specified
+        args.num_windows = 10
+
+    available_days = args.days - args.train_window
+
+    if args.num_windows:
+        calculated_window_size = available_days // args.num_windows
+        window_size = calculated_window_size
+        num_windows = args.num_windows
+    else:
+        calculated_num_windows = available_days // args.window_size
+        window_size = args.window_size
+        num_windows = calculated_num_windows
 
     print(f"\n{'='*80}")
     print(f"ENHANCED MULTI-HORIZON WALK-FORWARD TESTING")
@@ -275,8 +290,8 @@ def main():
     print(f"  Mode: {args.mode}")
     print(f"  Data: {args.days} days")
     print(f"  Train Window: {args.train_window} days")
-    print(f"  Test Window: {args.test_window} days")
-    print(f"  Step Size: {args.step_size} days")
+    print(f"  Num Windows: {num_windows}")
+    print(f"  Window Size: {window_size} days (= step size, no gaps)")
     print(f"  Transaction Cost: 0.15% (backtester default: 0.1% commission + 0.05% slippage)")
     if args.resume:
         print(f"  Resume: Enabled (max age: {args.max_age}h)")
@@ -286,12 +301,12 @@ def main():
     # CRITICAL: Calculate unified test window for fair cross-horizon comparison
     # All horizons must use the SAME test window size for valid comparison
     print(f"\n📊 Calculating Unified Test Window:")
-    print(f"  Base test window: {args.test_window} days")
+    print(f"  Base window size: {window_size} days")
 
     max_horizon = max(args.horizons)
     max_required = args.sequence_length + max_horizon + 30  # +30 buffer for safety
 
-    unified_test_window = max(args.test_window, max_required)
+    unified_test_window = max(window_size, max_required)
 
     print(f"  Maximum horizon: {max_horizon} days")
     print(f"  Sequence length: {args.sequence_length} days")
